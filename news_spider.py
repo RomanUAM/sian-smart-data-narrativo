@@ -2327,6 +2327,43 @@ def save_outputs(output_dir: Path, records: list[NewsRecord], scan_existing: boo
     )
 
 
+def stable_json_hash(value) -> str:
+    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def write_cli_manifest(output_dir: Path, config: dict, records: list[NewsRecord], status: str, error: str = "") -> None:
+    rows = [asdict(record) for record in records]
+    manifest = {
+        "system": "SIAN",
+        "manifest_version": 1,
+        "execution": "local_cli_news_spider",
+        "analysis_policy": "heuristic_local_no_external_llm",
+        "started_or_finished_at": dt.datetime.now(dt.UTC).isoformat(),
+        "status": status,
+        "config": config,
+        "config_hash": stable_json_hash(config),
+        "records_total": len(rows),
+        "records_usable": sum(1 for row in rows if row.get("status") in {"ok", "ok_partial"}),
+        "records_by_source_type": {
+            source_type: sum(1 for row in rows if str(row.get("source_type") or "unknown") == source_type)
+            for source_type in sorted({str(row.get("source_type") or "unknown") for row in rows})
+        },
+        "records_by_status": {
+            row_status: sum(1 for row in rows if str(row.get("status") or "unknown") == row_status)
+            for row_status in sorted({str(row.get("status") or "unknown") for row in rows})
+        },
+        "records_hash": stable_json_hash(rows) if rows else "",
+        "error": error,
+        "notes": [
+            "CLI run uses public/indexed sources only.",
+            "Partial/paywall/blocked sources must be interpreted as metadata signals, not full text.",
+            "No external LLM is used for local extraction.",
+        ],
+    }
+    safe_write_text_atomic(output_dir / "run_manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def safe_slug(value: str) -> str:
     value = re.sub(r"[^A-Za-z0-9._-]+", "_", value.strip())
     return value[:80] or "unknown"
@@ -2355,7 +2392,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--required-source-types", default="", help="Comma-separated required/audited source types, e.g. news,forum.")
     parser.add_argument("--accept-source-types", default="", help="Comma-separated accepted source types. Empty accepts all.")
     parser.add_argument("--seed-url-file", default="", help="JSON list of curated seed URLs to ingest as indexed records.")
-    parser.add_argument("--download-pdfs", action="store_true", help="Download open PDFs when academic indexes expose a pdf_url.")
+    parser.add_argument(
+        "--download-pdfs",
+        action="store_true",
+        help=(
+            "Attempt PDF download only when local policy permits it; otherwise keep metadata/pdf_url. "
+            "Crossref PDFs remain metadata-only unless license verification is added."
+        ),
+    )
     parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--search-delay", type=float, default=2.0)
     parser.add_argument("--min-text-chars", type=int, default=600)
@@ -2372,30 +2416,60 @@ def main() -> None:
     source_modes = [item.strip() for item in args.source_modes.split(",") if item.strip()]
     required_source_types = [item.strip() for item in args.required_source_types.split(",") if item.strip()]
     accept_source_types = [item.strip() for item in args.accept_source_types.split(",") if item.strip()]
-    records = crawl_news(
-        query=args.query,
-        start_year=args.start_year,
-        end_year=args.end_year,
-        domains=domains,
-        query_variants=query_variants,
-        geographic_scope=args.geographic_scope,
-        geographic_terms=geographic_terms,
-        exclude_terms=exclude_terms,
-        exclude_domains=exclude_domains,
-        source_modes=source_modes,
-        output_dir=args.output_dir,
-        max_records_per_month=args.max_records_per_month,
-        max_records_per_source_type_year=args.max_records_per_source_type_year,
-        target_min_per_source_type_year=args.target_min_per_source_type_year,
-        required_source_types=required_source_types,
-        accept_source_types=accept_source_types,
-        seed_url_file=args.seed_url_file or None,
-        download_pdfs=args.download_pdfs,
-        delay_seconds=args.delay,
-        search_delay_seconds=args.search_delay,
-        min_text_chars=args.min_text_chars,
-        progress=lambda message: print(message, flush=True),
-    )
+    config = {
+        "query": args.query,
+        "start_year": args.start_year,
+        "end_year": args.end_year,
+        "domains": domains,
+        "query_variants": query_variants,
+        "geographic_scope": args.geographic_scope,
+        "geographic_terms": geographic_terms,
+        "exclude_terms": exclude_terms,
+        "exclude_domains": exclude_domains,
+        "source_modes": source_modes or ["gdelt_news"],
+        "output_dir": args.output_dir,
+        "max_records_per_month": args.max_records_per_month,
+        "max_records_per_source_type_year": args.max_records_per_source_type_year,
+        "target_min_per_source_type_year": args.target_min_per_source_type_year,
+        "required_source_types": required_source_types,
+        "accept_source_types": accept_source_types,
+        "seed_url_file": args.seed_url_file or "",
+        "download_pdfs": bool(args.download_pdfs),
+        "delay_seconds": args.delay,
+        "search_delay_seconds": args.search_delay,
+        "min_text_chars": args.min_text_chars,
+    }
+    records: list[NewsRecord] = []
+    output_path = Path(args.output_dir)
+    try:
+        records = crawl_news(
+            query=args.query,
+            start_year=args.start_year,
+            end_year=args.end_year,
+            domains=domains,
+            query_variants=query_variants,
+            geographic_scope=args.geographic_scope,
+            geographic_terms=geographic_terms,
+            exclude_terms=exclude_terms,
+            exclude_domains=exclude_domains,
+            source_modes=source_modes,
+            output_dir=args.output_dir,
+            max_records_per_month=args.max_records_per_month,
+            max_records_per_source_type_year=args.max_records_per_source_type_year,
+            target_min_per_source_type_year=args.target_min_per_source_type_year,
+            required_source_types=required_source_types,
+            accept_source_types=accept_source_types,
+            seed_url_file=args.seed_url_file or None,
+            download_pdfs=args.download_pdfs,
+            delay_seconds=args.delay,
+            search_delay_seconds=args.search_delay,
+            min_text_chars=args.min_text_chars,
+            progress=lambda message: print(message, flush=True),
+        )
+        write_cli_manifest(output_path, config, records, "finished")
+    except Exception as exc:  # noqa: BLE001
+        write_cli_manifest(output_path, config, records, "error", str(exc))
+        raise
     usable = sum(1 for record in records if record.status in {"ok", "ok_partial"} and (record.text_clean or record.title))
     partial = sum(1 for record in records if record.status == "ok_partial")
     print(f"Saved {len(records)} records ({usable} usable; {partial} partial RSS/metadata) in {args.output_dir}")

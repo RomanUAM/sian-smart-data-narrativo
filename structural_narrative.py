@@ -365,7 +365,7 @@ def build_structural_influence_graph(propositions: list[dict], min_weight: int =
     return {"nodes": list(nodes.values()), "edges": edge_rows}
 
 
-def chain_of_custody_rows(records: list[dict]) -> list[dict]:
+def technical_traceability_rows(records: list[dict]) -> list[dict]:
     rows = []
     for record in records:
         rows.append(
@@ -382,6 +382,8 @@ def chain_of_custody_rows(records: list[dict]) -> list[dict]:
             }
         )
     return rows
+
+
 
 
 def smart_source_cartography(records: list[dict], pareto_share: float = 0.80) -> dict:

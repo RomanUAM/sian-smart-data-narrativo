@@ -227,12 +227,12 @@ El análisis no usa LLM ni servicios externos. Calcula localmente:
 - disección estructural: sujeto-verbo-objeto, actos de habla, causalidad,
   premisas implícitas, señales heurísticas de falacia y vectores de
   desinformación;
-- cadena de custodia técnica con hash por registro;
+- trazabilidad técnica con hash por registro;
 - tonalidad léxica exploratoria;
 - red narrativa;
 - red semántica;
 - grafo de conocimiento;
-- comunidades Louvain cuando está disponible;
+- módulos semánticos Louvain cuando está disponible;
 - cubridor nodal multiobjetivo.
 
 Antes de calcular, la app explicita el marco de lectura: una narrativa no es

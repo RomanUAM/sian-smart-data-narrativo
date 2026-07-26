@@ -61,7 +61,7 @@ from source_profiles import (
 )
 from structural_narrative import (
     build_structural_influence_graph,
-    chain_of_custody_rows,
+    technical_traceability_rows,
     extract_structural_propositions,
     smart_data_nucleus,
     structural_summary,
@@ -2798,7 +2798,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         structural_rows = extract_structural_propositions(selected_records, max_sentences_per_doc=int(max_sentences_per_doc))
         structural_summary_rows = structural_summary(structural_rows)
         structural_graph = build_structural_influence_graph(structural_rows, min_weight=int(min_structural_edge_weight))
-        custody_rows = chain_of_custody_rows(selected_records)
+        custody_rows = technical_traceability_rows(selected_records)
         sdn = smart_data_nucleus(selected_records, expected_topics=expected_topics)
 
         total_props = len(structural_rows)
@@ -2900,7 +2900,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             "propositions": structural_rows,
             "smart_data_nucleus": sdn,
             "structural_graph": structural_graph,
-            "chain_of_custody": custody_rows,
+            "technical_traceability": custody_rows,
         }
         st.download_button("Descargar cartografía fuentes CSV", rows_to_csv(sdn["cartography"]["sources"]), "sdn_source_cartography.csv", "text/csv")
         st.download_button("Descargar fuentes Pareto CSV", rows_to_csv(sdn["cartography"]["pareto_sources"]), "sdn_pareto_sources.csv", "text/csv")
@@ -3018,7 +3018,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         structural_rows = extract_structural_propositions(selected_records)
         structural_summary_rows = structural_summary(structural_rows)
         structural_graph = build_structural_influence_graph(structural_rows)
-        custody_rows = chain_of_custody_rows(selected_records)
+        custody_rows = technical_traceability_rows(selected_records)
         sdn = smart_data_nucleus(selected_records)
         sentiment_by_url = {row.get("url"): row for row in sentiment_rows}
         enriched_records = []

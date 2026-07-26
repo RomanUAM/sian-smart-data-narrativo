@@ -13,7 +13,7 @@ El sistema local ayuda a:
 - extraer indicios narrativos;
 - extraer proposiciones, actos de habla, causalidades y premisas implícitas;
 - marcar señales heurísticas de falacia o desinformación que requieren revisión humana;
-- conservar cadena de custodia mediante hash por registro;
+- conservar trazabilidad técnica mediante hash por registro;
 - construir redes de relaciones;
 - sugerir nodos de entrada;
 - permitir validación humana.

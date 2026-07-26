@@ -42,7 +42,7 @@ Entregables mínimos:
 - respeto de `robots.txt`;
 - no automatizar sesiones, CAPTCHAs ni espacios privados;
 - hash SHA-256 por registro;
-- cadena de custodia con URL, fecha, estado, fuente y método de captura;
+- trazabilidad técnica con URL, fecha, estado, fuente y método de captura;
 - separación entre texto completo `ok` y señal parcial `ok_partial`.
 
 ### Analista/estratega: sintetizador humano
@@ -128,7 +128,7 @@ Acción:
 - entropía de actos de habla;
 - entropía de predicados;
 - grafo fuente--actor--acto--falacia--vector;
-- exportación de cadena de custodia;
+- exportación de trazabilidad técnica;
 - mapas para lectura cercana.
 
 ## Métricas nuevas
@@ -147,7 +147,7 @@ Acción:
 - `disinformation_vector_signals`: número de proposiciones con señales de
   presión, miedo, conspiración o absolutismo.
 - `mean_structural_confidence`: confianza heurística de extracción SVO.
-- `record_hash`: hash SHA-256 para cadena de custodia.
+- `record_hash`: hash SHA-256 para trazabilidad técnica.
 
 ## Límite crítico
 

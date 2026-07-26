@@ -43,7 +43,7 @@ Existe y puede correrse en la app:
   - premisas implícitas;
   - señales heurísticas de falacia;
   - vectores de desinformación;
-  - cadena de custodia con SHA-256;
+  - trazabilidad técnica con SHA-256;
 - Smart Data Nucleus:
   - fuentes Pareto;
   - marcos problema/culpable/solución/urgencia;
@@ -140,4 +140,3 @@ La arquitectura es coherente si mantiene esta frontera:
 - no totalizante;
 - validada por humano;
 - escalable a grafos reales en una fase posterior.
-
