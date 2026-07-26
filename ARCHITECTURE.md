@@ -51,6 +51,20 @@ La unidad de búsqueda es un término por consulta. No se concatenan todos los
 sinónimos porque eso satura índices, genera 429 y vuelve opaco qué término
 recuperó cada documento.
 
+## Ejecución recuperable
+
+La interfaz genera `run_manifest.json` y, en corridas secuenciales,
+`query_plan.json`. El archivo `scripts/run_query_plan.py` permite repetir ese
+plan sin Streamlit:
+
+```text
+query_plan.json → scripts/run_query_plan.py → corpus fusionado + manifiesto replay
+```
+
+Esto separa diseño interactivo y ejecución reproducible. La app sigue siendo el
+laboratorio de configuración; el script permite repetir o auditar la corrida de
+forma local.
+
 ## Capas de fuente
 
 | Capa | Qué intenta captar | Riesgo |
@@ -89,4 +103,3 @@ Debe ignorarse:
 - cachés;
 - credenciales;
 - datos privados o no autorizados.
-

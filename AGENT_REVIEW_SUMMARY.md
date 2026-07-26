@@ -49,15 +49,17 @@ Formulación recomendada:
 - Se actualizó `requirements.txt`.
 - La app guarda `run_manifest.json` al iniciar cada corrida.
 - La corrida secuencial guarda `query_plan.json`.
+- Se añadió `scripts/run_query_plan.py` para repetir un plan secuencial sin
+  depender de Streamlit.
 - La documentación ya no presenta el manifiesto como pendiente total.
 
 ## Pendientes antes de artículo fuerte
 
-- Extraer el planificador secuencial a un módulo o script independiente.
+- Extraer completamente el planificador secuencial a un módulo compartido; por
+  ahora existe un runner independiente que re-ejecuta `query_plan.json`.
 - Añadir hash final del corpus fusionado.
 - Crear microcaso verificable: fuente → limpieza → clasificación → frame →
   lectura humana.
 - Auditar manualmente una muestra por fuente y estado (`ok`, `ok_partial`,
   `too_short`, `fetch_error`).
 - Separar cuerpo humanístico y apéndice técnico del cubridor/multiobjetivo.
-

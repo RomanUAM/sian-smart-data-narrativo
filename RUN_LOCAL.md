@@ -59,6 +59,25 @@ Reddit RSS queda como opción manual exploratoria. No es la ruta principal para
 conversación humana porque se bloquea con frecuencia y no representa toda la
 conversación social.
 
+## 4.1. Repetir una corrida sin interfaz
+
+La app genera `query_plan.json`. Ese plan puede ejecutarse localmente sin
+Streamlit:
+
+```bash
+python scripts/run_query_plan.py --plan news_output/query_plan.json
+```
+
+Para una prueba corta:
+
+```bash
+python scripts/run_query_plan.py --plan news_output/query_plan.json --stop-after 3
+```
+
+Esto crea `run_manifest_replay.json` y un corpus fusionado en la carpeta de
+salida. Sirve para reproducibilidad y para recuperar una corrida fuera de la
+interfaz.
+
 ## 5. Qué se guarda
 
 Las salidas locales se guardan en:
