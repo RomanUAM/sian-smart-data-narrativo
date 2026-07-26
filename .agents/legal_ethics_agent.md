@@ -23,6 +23,11 @@ de recolectar o publicar.
 - Publicar datos personales de usuarios.
 - Mezclar conversación pública con vigilancia de individuos.
 - Usar “detector de verdad”, “manipulación comprobada” o “desinformación demostrada” sin verificación externa.
+- Tratar una fuente `partial` o `paywall` como texto completo `ok`.
+- Descargar PDFs sólo porque aparece un `pdf_url`, sin evidencia de acceso
+  abierto/licencia y sin revisar robots.txt.
+- Usar Reddit RSS como “la conversación social” en vez de “muestra pública
+  parcial indexable”.
 
 ## Vocabulario recomendado
 
@@ -30,6 +35,8 @@ de recolectar o publicar.
 - “fuentes públicas indexables” en lugar de “todo internet”.
 - “señales heurísticas” en lugar de “detección automática”.
 - “muestra pública parcial” en lugar de “representación social completa”.
+- “trazabilidad técnica SHA-256” en lugar de “cadena de custodia”, salvo que se
+  aclare explícitamente que no certifica admisibilidad jurídica.
 
 ## Salida esperada
 
@@ -41,3 +48,10 @@ Antes de publicar, debe existir una sección de límites éticos que indique:
 4. cómo se respeta la extracción pública;
 5. qué necesita validación humana.
 
+## Lecciones aprendidas
+
+- Si `robots.txt` falla o no puede leerse, el sistema debe preferir metadatos
+  parciales antes que extracción completa.
+- Los documentos de publicación no deben incluir corpus bruto, handles, datos
+  personales ni citas extensas de terceros; deben reportar agregados, metadatos,
+  hashes y fragmentos breves.

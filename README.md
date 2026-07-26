@@ -185,13 +185,13 @@ invente registros ni que `other` sea una categoría interpretativa válida.
 - grafo de conocimiento con monogramas, bigramas, trigramas, fuentes, años, idioma y localización;
 - red semántica por coocurrencia;
 - disección estructural: sujeto-verbo-objeto, actos de habla, causalidad,
-  premisas ocultas, señales heurísticas de falacia, vectores de desinformación,
-  entropía de actos/predicados y cadena de custodia SHA-256;
+  premisas ocultas, señales heurísticas de falacia o desinformación,
+  entropía de actos/predicados y trazabilidad técnica SHA-256;
 - Smart Data Nucleus: cartografía Pareto de fuentes, marcos
   problema-culpable-solución-urgencia, detección de ecos, deltas temporales y
   silencios estructurales definidos por el analista;
-- selección comparada de nodos relevantes mediante cubridor narrativo; la app permite comparar barrido glotón por suma ponderada, MOEA, MOSA y adaptación local multiobjetivo del método de composición musical (MMC-MO) de Mora-Gutiérrez et al.;
-- frente Pareto, hipervolumen normalizado y superficie empírica \(u_1 \times u_3 \to u_2\) para comparar soluciones;
+- selección comparada de nodos relevantes mediante un selector nodal narrativo inspirado en cobertura; la app permite comparar barrido glotón por suma ponderada, MOEA, MOSA y adaptación local multiobjetivo del método de composición musical (MMC-MO) de Mora-Gutiérrez et al.;
+- frente Pareto, hipervolumen normalizado aproximado y superficie empírica \(u_1 \times u_3 \to u_2\) para comparar soluciones;
 - exportaciones CSV.
 - tonalidad léxica local por documento, año y tipo de fuente;
 - gráficas radiales donde cada eje es una capa de fuente y el valor es el promedio de tonalidad normalizado;
@@ -201,7 +201,7 @@ La comparación de métodos del cubridor usa una región factible común. El mí
 de nodos, la mínima relevancia nodal y el máximo daño estructural no son sólo
 filtros posteriores: entran en la evaluación. La app aplica criterio de Coello:
 factible sobre infactible; entre factibles, Pareto; entre infactibles, menor
-violación. El hipervolumen se calcula únicamente sobre soluciones factibles y
+violación. El hipervolumen se aproxima únicamente sobre soluciones factibles y
 cada método reporta presupuesto, evaluaciones usadas y llamadas reales a la
 función objetivo.
 
@@ -274,12 +274,13 @@ Las figuras están redactadas para una audiencia de humanidades: muestran fases
 interpretativas, decisiones de corpus y trazabilidad metodológica. Los detalles
 computacionales quedan en el texto para no abrumar al lector no especializado.
 
-## Apéndice técnico: modelo matemático del cubridor
+## Apéndice técnico: modelo matemático del selector nodal
 
-El cubridor se define como un SCP multiobjetivo sobre la red narrativa
-ponderada. El universo es el conjunto de aristas objetivo \(A^*\), no el conjunto
-de documentos. Cada nodo candidato \(v\in B\) cubre sus aristas incidentes
-\(S_v\).
+El modelo actual es un selector nodal multiobjetivo inspirado en el problema de
+cobertura de conjuntos. No debe presentarse como SCP clásico estricto mientras
+no se imponga la cobertura total de un universo. El universo operativo es el
+conjunto de aristas objetivo \(A^*\), no el conjunto de documentos. Cada nodo
+candidato \(v\in B\) define sus aristas incidentes \(S_v\).
 
 Variables:
 
@@ -292,8 +293,8 @@ Restricciones principales:
 - \(r_a \geq b_{av}x_v\): una arista se marca como removida si toca un nodo seleccionado.
 - \(r_a \leq \sum_v b_{av}x_v\): una arista no puede removerse si no toca ningún nodo seleccionado.
 - \(\sum_v x_v \leq k\): presupuesto de nodos interpretables.
-- \(x_v \leq e_v\): exclusión manual/metodológica de nodos, medios o términos.
-- \(L_h \leq \sum_v q_{vh}x_v \leq U_h\): cuotas opcionales por tipo de nodo.
+- \(x_v \leq e_v\): exclusión manual/metodológica de nodos, medios o términos. En la implementación actual se expresa mediante filtros de tipo y listas de exclusión.
+- \(L_h \leq \sum_v q_{vh}x_v \leq U_h\): cuotas opcionales por tipo de nodo; extensión metodológica documentada, no requisito activo por defecto.
 
 Objetivos:
 
@@ -305,7 +306,7 @@ En la app, las soluciones se comparan por dominancia de Pareto con el mismo crit
 factibilidad en todos los métodos: factible domina infactible; entre infactibles
 gana la menor violación total; entre factibles se aplica Pareto. Los métodos se
 comparan con el mismo presupuesto de evaluaciones de función objetivo y con las
-mismas métricas: hipervolumen normalizado, puntos no dominados globales,
+mismas métricas: hipervolumen normalizado aproximado por Monte Carlo determinístico, puntos no dominados globales,
 distancia generacional inversa (IGD), spacing y dispersión del frente en
 \((u_1,u_2,u_3)\). La función escalar interna sólo guía la búsqueda; no sustituye
 el modelo multiobjetivo.

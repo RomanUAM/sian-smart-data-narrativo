@@ -1287,6 +1287,10 @@ def _evaluate_cover_solution(
     selected_node_weight_share = selected_node_score / total_node_weight
     removed_edges_share = removed_edges / total_edges
     removed_edge_weight_share = removed_edge_weight / total_edge_weight
+    preserved_edges = len(covered_edges)
+    preserved_edge_weight = covered_edge_weight
+    preserved_edges_share = preserved_edges / total_edges
+    preserved_edge_weight_share = preserved_edge_weight / total_edge_weight
     min_node_weight_share = max(0.0, float(min_node_weight_share or 0.0))
     max_removed_edge_weight_share = min(1.0, max(0.0, float(max_removed_edge_weight_share if max_removed_edge_weight_share is not None else 1.0)))
     constraint_violation = (
@@ -1310,6 +1314,10 @@ def _evaluate_cover_solution(
         "covered_edges": len(covered_edges),
         "covered_edge_weight": covered_edge_weight,
         "covered_weight_share": covered_edge_weight / problem["total_edge_weight"],
+        "preserved_edges": preserved_edges,
+        "preserved_edge_weight": preserved_edge_weight,
+        "preserved_edges_share": preserved_edges_share,
+        "preserved_edge_weight_share": preserved_edge_weight_share,
         "removed_edges": removed_edges,
         "removed_edge_weight": removed_edge_weight,
         "selected_node_share": selected_node_share,
@@ -1428,7 +1436,7 @@ def _cover_result_from_ids(
         "selected_nodes": selected_rows,
         "stats": {
             "method": method,
-            "objective": "set_cover_multiobjective",
+            "objective": "node_selector_multiobjective_scp_inspired",
             "coverage_mode": problem.get("coverage_mode", "removal_impact"),
             "objective_value": round(objective_value, 5),
             "selected_nodes": len(selected_rows),
@@ -1437,11 +1445,14 @@ def _cover_result_from_ids(
             "candidate_edges": len(problem["edges"]),
             "covered_edges": len(covered_edges),
             "uncovered_edges": removed_edges,
+            "preserved_edges": len(covered_edges),
             "removed_edges": removed_edges,
             "total_edge_weight": round(total_edge_weight, 3),
             "covered_edge_weight": round(covered_weight, 3),
+            "preserved_edge_weight": round(covered_weight, 3),
             "removed_edge_weight": round(removed_edge_weight, 3),
             "covered_weight_share": round(covered_weight / total_edge_weight, 4),
+            "preserved_weight_share": round(covered_weight / total_edge_weight, 4),
             "removed_edge_weight_ratio": round(removed_edge_weight / total_edge_weight, 5),
             "selected_node_score": round(selected_node_score, 3),
             "total_node_weight": round(total_node_weight, 3),

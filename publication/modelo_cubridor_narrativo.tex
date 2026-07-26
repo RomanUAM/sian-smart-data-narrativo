@@ -196,10 +196,12 @@ recomienda fijar \(\gamma_3=0\) si se mezclan géneros de fuente, y usar
 \(\widehat{ev}_v\) sólo en corridas de sensibilidad o en análisis separado por
 tipo de fuente. Los parámetros $\gamma_i\geq 0$ satisfacen $\sum_i\gamma_i=1$.
 
-\section{Problema multiobjetivo de cobertura de conjuntos}
+\section{Selector nodal multiobjetivo inspirado en cobertura}
 
-El problema se formula como una adaptación explícita del \textit{set covering
-problem} (SCP). Sea el universo de relaciones que se desea explicar:
+El problema se formula como una adaptación inspirada en el \textit{set covering
+problem} (SCP), pero no debe confundirse con el SCP clásico estricto si no se
+exige cubrir todo el universo de relaciones. Sea el universo operativo que se
+desea explicar:
 \[
 {\mathcal U}=A^\star\subseteq A,
 \]
@@ -356,15 +358,16 @@ g_j(x^1,r^1)>g_j(x^2,r^2).
 \]
 El frente de Pareto $P$ contiene las soluciones factibles no dominadas.
 
-Para comparar métodos se maximiza el hipervolumen:
+Para comparar métodos se estima un hipervolumen normalizado:
 \[
 HV(P)=\lambda_3\left(\bigcup_{(x,r)\in P}
 [r_1,g_1(x,r)]\times[r_2,g_2(x,r)]\times[r_3,g_3(x,r)]\right),
 \]
 donde $r=(0,0,0)$ es el punto de referencia y $\lambda_3$ es la medida de
-volumen en tres dimensiones. Un mayor hipervolumen indica un frente que combina
-mejor parsimonia, importancia nodal y bajo daño estructural por remoción de
-aristas.
+volumen en tres dimensiones. En la implementación local este volumen se aproxima
+con muestreo Monte Carlo determinístico. Un mayor valor indica un frente que
+combina mejor parsimonia, importancia nodal y bajo daño estructural por remoción
+de aristas.
 
 \subsection{Función escalar auxiliar}
 
@@ -427,7 +430,7 @@ infactible se conserva la factible; entre dos infactibles se prefiere la de
 menor violación total de restricciones. El desempeño global de todos los métodos
 se reporta con las mismas métricas:
 \begin{itemize}
-  \item hipervolumen normalizado;
+  \item hipervolumen normalizado aproximado;
   \item número de puntos globalmente no dominados;
   \item distancia generacional inversa (IGD) contra el frente global combinado;
   \item spacing, como uniformidad de separación local entre puntos;

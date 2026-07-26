@@ -29,6 +29,10 @@ visualizaciones.
 - Usar peso de evidencia para mezclar fuentes sin estratificación.
 - Confundir aristas conservadas con aristas removidas por el cubridor.
 - Presentar Louvain como validación causal.
+- Llamar SCP clásico a un selector de nodos inspirado en cobertura cuando no se
+  impone una restricción estricta de cobertura del universo.
+- Reportar hipervolumen como exacto cuando el código usa una aproximación
+  normalizada por Monte Carlo determinístico.
 
 ## Salida esperada
 
@@ -39,3 +43,14 @@ El agente debe producir una lista corta:
 3. evidencia en código o documento;
 4. corrección recomendada.
 
+## Lecciones aprendidas
+
+- El modelo actual debe nombrarse como “selector nodal multiobjetivo inspirado
+  en SCP” mientras no exista una restricción clásica que obligue a cubrir todo
+  el universo de relaciones.
+- En modo `removal_impact`, una arista se cuenta como removida si al menos uno
+  de sus extremos está seleccionado; las aristas restantes son preservadas. Las
+  etiquetas de salida deben decir “preserved/removed” para evitar mezclarlo con
+  cobertura clásica.
+- Si se mencionan restricciones de elegibilidad o cuotas por tipo de nodo, deben
+  existir en el código o declararse como extensión pendiente.

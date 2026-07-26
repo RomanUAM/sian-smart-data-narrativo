@@ -70,6 +70,8 @@ from structural_narrative import (
 
 st.set_page_config(page_title="SIAN · Smart Data Narrativo", layout="wide")
 
+APP_ROOT = Path(__file__).resolve().parent
+
 
 def json_default(value):
     if isinstance(value, Path):
@@ -114,6 +116,52 @@ def save_run_manifest(config: dict) -> None:
             json.dumps(query_plan, ensure_ascii=False, indent=2, default=json_default),
             encoding="utf-8",
         )
+
+
+def update_run_manifest(config: dict, status: str, rows: list[dict] | None = None, error: str = "") -> None:
+    """Update manifest at the end of a local run for reproducibility/audit."""
+    output_dir = Path(config.get("output_dir") or "news_output")
+    manifest_path = output_dir / "run_manifest.json"
+    if manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            manifest = {}
+    else:
+        manifest = {"system": "SIAN", "manifest_version": 1}
+    rows = rows or []
+    manifest.update(
+        {
+            "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+            "status": status,
+            "records_total": len(rows),
+            "records_usable": sum(1 for row in rows if row.get("status") in {"ok", "ok_partial"}),
+            "records_by_source_type": dict(Counter(str(row.get("source_type") or "unknown") for row in rows)),
+            "records_by_status": dict(Counter(str(row.get("status") or "unknown") for row in rows)),
+            "records_hash": stable_json_hash(rows) if rows else "",
+            "error": error,
+        }
+    )
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding="utf-8")
+
+
+def is_safe_clear_target(path_value: str) -> tuple[bool, Path, str]:
+    target = Path(path_value or "news_output").expanduser()
+    try:
+        resolved = target.resolve()
+        app_resolved = APP_ROOT.resolve()
+        cwd_resolved = Path.cwd().resolve()
+    except Exception as exc:
+        return False, target, f"Ruta inválida: {exc}"
+    allowed_roots = [app_resolved, cwd_resolved]
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+        return False, resolved, "Por seguridad sólo se limpian carpetas dentro del proyecto local."
+    if resolved.name not in {"news_output", "news_output_recleaned", "solver_output"} and "news_output" not in resolved.parts:
+        return False, resolved, "La carpeta debe llamarse news_output, news_output_recleaned, solver_output o estar dentro de news_output."
+    if resolved in {Path.home().resolve(), app_resolved, cwd_resolved, Path("/")}:
+        return False, resolved, "No se permite limpiar una raíz de trabajo."
+    return True, resolved, ""
 
 
 def init_state() -> None:
@@ -280,6 +328,7 @@ def start_worker(config: dict) -> None:
                     "\n".join(json.dumps(row, ensure_ascii=False) for row in merged_rows) + ("\n" if merged_rows else ""),
                     encoding="utf-8",
                 )
+                update_run_manifest(config, "finished", merged_rows)
                 q.put(("done", merged_rows))
             else:
                 records = crawl_news(
@@ -307,8 +356,11 @@ def start_worker(config: dict) -> None:
                     progress=progress,
                     stop_requested=stop_event.is_set,
                 )
-                q.put(("done", [asdict(record) for record in records]))
+                rows = [asdict(record) for record in records]
+                update_run_manifest(config, "finished", rows)
+                q.put(("done", rows))
         except Exception as exc:  # noqa: BLE001
+            update_run_manifest(config, "error", [], str(exc))
             q.put(("error", str(exc)))
 
     thread = threading.Thread(target=worker, daemon=True)
@@ -367,6 +419,11 @@ def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dic
                 copy = dict(row)
                 copy["source_collection"] = source_key
                 merged[key] = copy
+            else:
+                prior = merged[key]
+                prior["source_collection"] = ", ".join(
+                    merge_unique([str(prior.get("source_collection") or ""), source_key])
+                )
     output_dir = Path(base_output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     merged_rows = sorted(merged.values(), key=lambda item: (item.get("year") or 0, item.get("source_type") or "", item.get("medium") or ""))
@@ -1538,7 +1595,7 @@ labor_role_skills: developer, programador, engineer, ingeniero, skills, habilida
         gs1.metric("Nodos", narrative_graph["stats"]["nodes"])
         gs2.metric("Aristas", narrative_graph["stats"]["edges"])
         gs3.metric("Densidad", narrative_graph["stats"]["density"])
-        gs4.metric("Comunidades", narrative_graph["stats"]["communities"])
+        gs4.metric("Módulos semánticos", narrative_graph["stats"]["communities"])
         gs5.metric("Peso norm. aristas", narrative_graph["stats"]["total_edge_weight"])
         gs6.metric("Peso crudo aristas", narrative_graph["stats"].get("total_raw_edge_weight", 0))
         st.caption(f"Modo de ponderación de red narrativa: `{narrative_graph['stats'].get('weighting_mode')}`.")
@@ -1590,7 +1647,9 @@ labor_role_skills: developer, programador, engineer, ingeniero, skills, habilida
         with st.expander("Modelo matemático formal del cubridor", expanded=False):
             st.markdown(
                 r"""
-El cubridor se formula como un SCP multiobjetivo sobre la red narrativa.
+El cubridor se formula como un selector nodal multiobjetivo inspirado en SCP
+sobre la red narrativa. No es SCP clásico estricto si no se exige cobertura
+total del universo de aristas.
 
 - Universo: aristas objetivo \(A^*\\) después de filtros, exclusiones y peso mínimo.
 - Variable nodal: \(x_v \\in \\{0,1\\}\), selecciona o no el nodo candidato.
@@ -1629,7 +1688,8 @@ Objetivos:
 \\min \\frac{\\sum_a w_a r_a}{\\sum_a w_a}
 \]
 
-El frente se compara con dominancia de Pareto y se resume con hipervolumen normalizado.
+El frente se compara con dominancia de Pareto y se resume con hipervolumen
+normalizado aproximado por Monte Carlo determinístico.
 """
             )
         cover_method = st.selectbox(
@@ -1822,7 +1882,7 @@ El frente se compara con dominancia de Pareto y se resume con hipervolumen norma
         st.dataframe(cover["selected_nodes"], use_container_width=True)
         if cover.get("pareto_front"):
             st.markdown("Frente Pareto multiobjetivo")
-            st.caption("SCP formal: minimizar nodos/total, maximizar peso nodal/total y minimizar peso de aristas retiradas/total.")
+            st.caption("Selector nodal inspirado en SCP: minimizar nodos/total, maximizar peso nodal/total y minimizar peso de aristas retiradas/total.")
             st.dataframe(cover["pareto_front"], use_container_width=True)
 
         with st.expander("Nodos, aristas y comunidades de la red narrativa"):
@@ -1830,7 +1890,7 @@ El frente se compara con dominancia de Pareto y se resume con hipervolumen norma
             st.dataframe(narrative_graph["nodes"][:120], use_container_width=True)
             st.markdown("Aristas principales")
             st.dataframe(narrative_graph["edges"][:200], use_container_width=True)
-            st.markdown("Comunidades")
+            st.markdown("Módulos semánticos")
             st.dataframe(narrative_graph["communities"], use_container_width=True)
 
     with analysis_tabs[2]:
@@ -1867,7 +1927,7 @@ El frente se compara con dominancia de Pareto y se resume con hipervolumen norma
         sm1, sm2, sm3, sm4, sm5, sm6 = st.columns(6)
         sm1.metric("Nodos", methods_graph["stats"]["nodes"])
         sm2.metric("Aristas", methods_graph["stats"]["edges"])
-        sm3.metric("Comunidades", methods_graph["stats"]["communities"])
+        sm3.metric("Módulos semánticos", methods_graph["stats"]["communities"])
         sm4.metric("Peso norm. aristas", methods_graph["stats"]["total_edge_weight"])
         sm5.metric("Ponderación", methods_graph["stats"].get("weighting_mode", "neutral"))
         sm6.metric("Documentos", len(event_rows_for_cover))
@@ -1897,7 +1957,7 @@ Objetivos originales:
 \min \sum_{a\in A_R(C)}w_a/\sum_{a\in A^\star}w_a
 \]
 
-Para comparar hipervolumen y frentes se convierten a tres utilidades normalizadas que se maximizan:
+Para comparar hipervolumen aproximado y frentes se convierten a tres utilidades normalizadas que se maximizan:
 
 \[
 u_1=1-|C|/|B|,\qquad
@@ -2493,7 +2553,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         adaptive_groups = adaptive_topic_groups_from_graph(knowledge_graph)
         st.markdown("Grupos adaptativos por n-grama central")
         st.dataframe(adaptive_groups, use_container_width=True)
-        st.markdown("Comunidades del grafo")
+        st.markdown("Módulos semánticos del grafo")
         st.dataframe(knowledge_graph["communities"], use_container_width=True)
         st.caption("Estos grupos cambian con el tópico, filtros, stopwords y umbrales. Úsalos como propuesta inicial y luego edita el diccionario en 'Grupos de ideas'.")
 
@@ -2546,7 +2606,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         window_size = c2.slider("Ventana de coocurrencia", 2, 10, 4)
         min_cooc = c3.slider("Coocurrencia mínima", 1, 10, 2)
         semantic_community_algorithm = c4.selectbox(
-            "Comunidades",
+            "Módulos semánticos",
             options=["louvain", "greedy_modularity", "connected_components"],
             index=0,
             help="Louvain si está disponible localmente; si no, la app cae a modularidad voraz.",
@@ -2563,7 +2623,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         s1.metric("Nodos", network["stats"]["nodes"])
         s2.metric("Aristas", network["stats"]["edges"])
         s3.metric("Densidad", network["stats"]["density"])
-        s4.metric("Comunidades", network["stats"]["communities"])
+        s4.metric("Módulos semánticos", network["stats"]["communities"])
         s5.metric("Algoritmo", network["stats"].get("community_algorithm", "—"))
         s6.metric("Modularidad", network["stats"].get("modularity", "—"))
         s7.metric("Frases absorbidas", network["stats"].get("absorbed_ngrams", 0))
@@ -2721,7 +2781,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.caption(
             "Esta capa no afirma verdad judicial ni psicológica. Produce indicadores locales: "
             "proposiciones sujeto-verbo-objeto, actos de habla, causalidad, premisas implícitas, "
-            "señales de falacia, vectores de desinformación, entropía narrativa y cadena de custodia."
+            "señales heurísticas de falacia o desinformación, entropía narrativa y trazabilidad técnica."
         )
         sd1, sd2 = st.columns(2)
         max_sentences_per_doc = sd1.slider("Máximo de oraciones por documento", 5, 120, 40, step=5)
@@ -2821,7 +2881,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.dataframe(structural_graph["nodes"], use_container_width=True)
         st.dataframe(structural_graph["edges"], use_container_width=True)
 
-        st.markdown("Cadena de custodia digital")
+        st.markdown("Trazabilidad técnica digital")
         st.caption(
             "Cada registro recibe hash SHA-256 sobre URL, título, fecha, estado, momento de captura y texto. "
             "Esto no vuelve admisible el dato por sí solo, pero sí hace auditable la integridad del corpus."
@@ -2851,7 +2911,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.download_button("Descargar resumen estructural CSV", rows_to_csv(structural_summary_rows), "structural_summary.csv", "text/csv")
         st.download_button("Descargar nodos estructurales CSV", rows_to_csv(structural_graph["nodes"]), "structural_graph_nodes.csv", "text/csv")
         st.download_button("Descargar aristas estructurales CSV", rows_to_csv(structural_graph["edges"]), "structural_graph_edges.csv", "text/csv")
-        st.download_button("Descargar cadena de custodia CSV", rows_to_csv(custody_rows), "chain_of_custody.csv", "text/csv")
+        st.download_button("Descargar trazabilidad técnica CSV", rows_to_csv(custody_rows), "technical_traceability.csv", "text/csv")
         st.download_button(
             "Descargar disección estructural JSON",
             json.dumps(structural_bundle, ensure_ascii=False, indent=2),
@@ -2986,7 +3046,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             "structural_summary": structural_summary_rows,
             "smart_data_nucleus": sdn,
             "structural_graph": structural_graph,
-            "chain_of_custody": custody_rows,
+            "technical_traceability": custody_rows,
             "narrative_events": event_rows,
             "narrative_event_summary": event_summary,
             "actors": actors,
@@ -3042,7 +3102,7 @@ drain_queue()
 st.title("SIAN · Smart Data Narrativo")
 st.caption(
     "Sistema local para recolectar fuentes públicas, balancear capas discursivas y diseccionar narrativas "
-    "mediante grafos, Smart Data, proposiciones, marcos, deltas, silencios y cadena de custodia."
+    "mediante grafos, Smart Data, proposiciones, marcos, deltas, silencios y trazabilidad técnica."
 )
 
 GEOGRAPHIC_PRESETS = {
@@ -4213,7 +4273,7 @@ def render_repeated_cover_quality_results(results: dict) -> None:
     st.caption(
         "Cada métrica se calcula sólo sobre el frente factible no dominado de cada método en cada corrida. "
         "IGD usa como referencia el frente empírico ideal: unión no dominada de todos los métodos y corridas. "
-        "El hipervolumen es el volumen dominado por el frente no dominado factible de cada método."
+        "El hipervolumen se aproxima como volumen dominado por el frente no dominado factible de cada método."
     )
     st.metric("Puntos del frente empírico ideal", len(reference_rows))
 
@@ -4849,7 +4909,7 @@ with st.sidebar:
         disabled=st.session_state.spider_running,
     )
     output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
-    default_seed_path = Path("news_spider/seed_sources/tatuaje_mexico_news_seed_urls.json")
+    default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
     use_seed_urls = st.checkbox(
         "Usar URLs semilla de noticias mexicanas",
         value=default_seed_path.exists() and "tatu" in query.lower(),
@@ -4870,7 +4930,14 @@ with st.sidebar:
     )
     if seed_domains_preview:
         st.caption(f"Medios detectados en semilla: {', '.join(seed_domains_preview[:12])}")
-    clear_output = st.button("Limpiar bases de salida", disabled=st.session_state.spider_running)
+    confirm_clear_output = st.checkbox(
+        "Confirmo que quiero limpiar sólo la carpeta de salida local",
+        disabled=st.session_state.spider_running,
+    )
+    clear_output = st.button(
+        "Limpiar bases de salida",
+        disabled=st.session_state.spider_running or not confirm_clear_output,
+    )
 
 manual_domains = [
     item.strip()
@@ -4879,8 +4946,10 @@ manual_domains = [
     if item.strip()
 ]
 if clear_output:
-    target = Path(output_dir)
-    if target.exists() and target.is_dir():
+    safe_clear, target, clear_reason = is_safe_clear_target(output_dir)
+    if not safe_clear:
+        st.error(clear_reason)
+    elif target.exists() and target.is_dir():
         shutil.rmtree(target)
         st.session_state.spider_rows = []
         st.session_state.loaded_path = ""
@@ -5305,6 +5374,7 @@ if selected_source_run or run or run_sequential:
             mixed_required.append("scientific_article")
         mixed_required = merge_unique(mixed_required)
         run_config["required_source_types"] = mixed_required
+        run_config["accept_source_types"] = mixed_required
         run_config["target_min_per_source_type_year"] = max(
             int(min_news_per_year) if "news" in mixed_required else 0,
             int(min_forums_per_year) if "forum" in mixed_required else 0,

@@ -535,6 +535,29 @@ def source_tail_cut_markers(url_or_domain: str) -> list[str]:
     return list(dict.fromkeys(markers))
 
 
+def source_access_policy(url_or_domain: str) -> dict:
+    """Return the configured access policy for a public source domain.
+
+    The spider uses this as a conservative guardrail: sources marked as
+    ``partial`` or ``paywall`` can still contribute metadata, but their visible
+    text should not be treated as a full article unless the user adds a separate
+    authorized-access workflow.
+    """
+    domain = canonical_domain(url_or_domain)
+    if not domain:
+        return {"access": "unknown", "source_type": "", "medium": "", "domain": ""}
+    for profile in [*NEWS_SOURCE_PROFILES, *FORUM_SOURCE_PROFILES, *INSTITUTIONAL_SOURCE_PROFILES]:
+        profile_domain = canonical_domain(profile.get("domain", ""))
+        if profile_domain and domain.endswith(profile_domain):
+            return {
+                "access": str(profile.get("access") or "unknown"),
+                "source_type": str(profile.get("source_type") or ""),
+                "medium": str(profile.get("medium") or ""),
+                "domain": profile_domain,
+            }
+    return {"access": "unknown", "source_type": "", "medium": "", "domain": domain}
+
+
 def profile_domains(
     regions: Iterable[str] | None = None,
     countries: Iterable[str] | None = None,

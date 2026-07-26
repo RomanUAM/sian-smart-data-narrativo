@@ -92,6 +92,12 @@ def main() -> None:
     counts: Counter = Counter()
     total = len(plan)
     for index, step in enumerate(plan, start=1):
+        if args.output_dir:
+            source_key = str(step.get("source_collection") or "mixed")
+            period_label = str(step.get("period_label") or step.get("start_year") or index)
+            step_output_dir = output_dir / "steps" / f"{index:04d}_{source_key}_{period_label}"
+        else:
+            step_output_dir = Path(step.get("output_dir") or output_dir / "steps" / str(index))
         target_type = str(step.get("target_source_type") or "")
         target_year = int(step.get("start_year") or 0)
         cap = int(step.get("max_records_per_source_type_year") or 0)
@@ -117,7 +123,7 @@ def main() -> None:
             exclude_terms=step.get("exclude_terms", []),
             exclude_domains=step.get("exclude_domains", []),
             source_modes=step.get("source_modes", []),
-            output_dir=Path(step.get("output_dir") or output_dir / "steps" / str(index)),
+            output_dir=step_output_dir,
             max_records_per_month=int(step.get("max_records_per_month") or 50),
             max_records_per_source_type_year=int(step.get("max_records_per_source_type_year") or 100),
             target_min_per_source_type_year=int(step.get("target_min_per_source_type_year") or 0),

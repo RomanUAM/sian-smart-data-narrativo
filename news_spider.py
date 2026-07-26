@@ -20,7 +20,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 
-from source_profiles import COMMON_NEWS_TAIL_CUT_MARKERS, DEFAULT_FORUM_DOMAINS, source_tail_cut_markers
+from source_profiles import (
+    COMMON_NEWS_TAIL_CUT_MARKERS,
+    DEFAULT_FORUM_DOMAINS,
+    source_access_policy,
+    source_tail_cut_markers,
+)
 
 
 GDELT_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
@@ -417,11 +422,11 @@ def robots_allowed(url: str) -> tuple[bool, str]:
             ROBOTS_CACHE[base] = None
     rp = ROBOTS_CACHE.get(base)
     if rp is None:
-        return True, "robots_unavailable_allow_cautious"
+        return False, "robots_unavailable_metadata_only"
     try:
         allowed = rp.can_fetch(USER_AGENT, url) and rp.can_fetch("*", url)
     except Exception:
-        return True, "robots_check_failed_allow_cautious"
+        return False, "robots_check_failed_metadata_only"
     return allowed, "robots_allowed" if allowed else "robots_disallow"
 
 
@@ -435,6 +440,9 @@ def safe_write_text_atomic(path: Path, text: str, encoding: str = "utf-8") -> No
 def download_pdf_file(pdf_url: str, output_dir: Path, year: int, record_id: str, timeout: int = 25) -> tuple[str, str]:
     if not pdf_url:
         return "", "no_pdf_url"
+    allowed, robots_note = robots_allowed(pdf_url)
+    if not allowed:
+        return "", f"pdf_metadata_only:{robots_note}"
     pdf_dir = output_dir / "pdfs" / str(year)
     pdf_dir.mkdir(parents=True, exist_ok=True)
     pdf_path = pdf_dir / f"{record_id}.pdf"
@@ -1935,10 +1943,14 @@ def crawl_news(
             ]))
             metadata_partial_text = rss_partial_text or title
 
+            force_partial_access = False
+            access_policy = {"access": "unknown"}
             try:
                 if article.get("source_api") == "reddit_rss":
                     text_raw_visible = rss_partial_text
                 else:
+                    access_policy = source_access_policy(url)
+                    force_partial_access = access_policy.get("access") in {"partial", "paywall"}
                     allowed, robots_note = robots_allowed(url)
                     if not allowed:
                         raise PermissionError(robots_note)
@@ -1963,7 +1975,17 @@ def crawl_news(
                     else:
                         status = "too_short"
                 else:
-                    status = "ok"
+                    if article.get("source_api") == "reddit_rss":
+                        status = "ok_partial"
+                        cleaning_notes = cleaning_notes + ["public_rss_partial"]
+                    elif force_partial_access:
+                        status = "ok_partial"
+                        cleaning_notes = cleaning_notes + [
+                            f"access_policy:{access_policy.get('access')}",
+                            "metadata_or_visible_excerpt_not_fulltext",
+                        ]
+                    else:
+                        status = "ok"
                 error = ""
             except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError, PermissionError) as exc:
                 if len(metadata_partial_text) >= 30:
@@ -2227,9 +2249,8 @@ def crawl_news(
                         progress(f"cap_reached: {record.year} · {record.source_type} · max {max_records_per_source_type_year}/year/type")
                     continue
                 if download_pdfs and record.pdf_url:
-                    pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
-                    record.pdf_file = pdf_file
-                    record.pdf_status = pdf_status
+                    record.pdf_file = ""
+                    record.pdf_status = "metadata_only_license_unverified"
                 records.append(record)
                 mark_accepted_record(record.year, record.source_type)
                 try:

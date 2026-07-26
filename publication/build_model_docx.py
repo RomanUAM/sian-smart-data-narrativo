@@ -97,7 +97,7 @@ def add_title(doc: Document) -> None:
     subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
     subtitle.paragraph_format.space_after = Pt(12)
     run = subtitle.add_run(
-        "Sistema local para extracción, limpieza, validación humana, red compleja y solución multiobjetivo SCP"
+        "Sistema local para extracción, limpieza, validación humana, red compleja y selector nodal multiobjetivo inspirado en SCP"
     )
     run.italic = True
     run.font.size = Pt(10.5)
@@ -245,10 +245,11 @@ def main() -> None:
         [2.4, 1.1, 3.0],
     )
 
-    h(doc, "5. Modelo SCP multiobjetivo")
+    h(doc, "5. Selector nodal multiobjetivo inspirado en SCP")
     p(
         doc,
-        "El universo no son los documentos sino las aristas objetivo A*. Cada nodo candidato v cubre/remueve sus aristas incidentes. "
+        "El universo no son los documentos sino las aristas objetivo A*. El modelo se inspira en cobertura de conjuntos, "
+        "pero no debe llamarse SCP clásico estricto mientras no se exija cobertura total del universo. "
         "El tercer objetivo mide daño estructural: una arista se cuenta como removida si toca al menos un nodo seleccionado.",
     )
     add_table(
@@ -283,7 +284,7 @@ def main() -> None:
     math(doc, "g(x,r) = (1 - f1(x), f2(x), 1 - f3(r)) in [0,1]^3")
     p(
         doc,
-        "Las soluciones se comparan por dominancia de Pareto. Los métodos se comparan con hipervolumen normalizado "
+        "Las soluciones se comparan por dominancia de Pareto. Los métodos se comparan con hipervolumen normalizado aproximado "
         "y con una superficie empírica u1 × u3 → u2 para no confundir una proyección 2D con el frente completo.",
     )
 
@@ -307,7 +308,7 @@ def main() -> None:
     )
     p(
         doc,
-        "Las métricas comunes son: hipervolumen normalizado, número de puntos no dominados globales, distancia generacional "
+        "Las métricas comunes son: hipervolumen normalizado aproximado, número de puntos no dominados globales, distancia generacional "
         "inversa (IGD) contra el frente global, spacing como uniformidad local y dispersión/extensión del frente en el espacio u1,u2,u3.",
     )
 
@@ -334,9 +335,9 @@ def main() -> None:
     for item in [
         "JSON/JSONL incremental, más archivos por año para evitar pérdida por cierres o timeouts.",
         "Tablas por año, fuente, tipo de fuente, idioma, región y estado de descarga.",
-        "N-gramas, redes semánticas, comunidades Louvain/alternativas locales y grafo de conocimiento.",
+        "N-gramas, redes semánticas, módulos semánticos Louvain/alternativas locales y grafo de conocimiento.",
         "Actores candidatos con validación humana persistente.",
-        "Frentes Pareto, hipervolumen, superficie empírica y comparación de métodos.",
+        "Frentes Pareto, hipervolumen aproximado, superficie empírica y comparación de métodos.",
     ]:
         bullet(doc, item)
 
