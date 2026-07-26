@@ -1,0 +1,381 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,calc}
+
+\geometry{letterpaper, margin=1in}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=black, hypertexnames=false}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\definecolor{gOne}{gray}{0.93}
+\definecolor{gTwo}{gray}{0.86}
+\definecolor{gThree}{gray}{0.78}
+\definecolor{gFour}{gray}{0.70}
+
+\tikzset{
+  box/.style={rectangle, rounded corners=2mm, draw=black!70, very thick, align=center, minimum height=9mm, font=\small},
+  sbox/.style={rectangle, rounded corners=2mm, draw=black!70, thick, align=center, minimum height=8mm, font=\scriptsize},
+  arrow/.style={-{Latex[length=2.2mm]}, thick, draw=black!70},
+  softarrow/.style={-{Latex[length=2.2mm]}, thick, dashed, draw=black!55}
+}
+
+\title{El tatuaje como archivo narrativo:\\ lectura situada de fuentes digitales mediante un sistema local}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+El tatuaje puede leerse como archivo corporal, marca estética, memoria afectiva,
+oficio visual y objeto de disputa social. El análisis de fuentes digitales
+enfrenta, sin embargo, un problema metodológico frecuente: reunir noticias,
+foros, reportes y artículos académicos puede producir un corpus grande, pero
+también una voz artificialmente homogénea. Este trabajo presenta un
+procedimiento local para construir un corpus narrativo trazable y analizarlo sin
+enviar textos a servicios externos. El ejemplo conductor es el tópico
+\textit{tatuaje}, entendido no sólo como palabra clave, sino como campo de
+sentidos: cuerpo, identidad, oficio, estética, salud, regulación, memoria y
+estigma. El sistema separa rubros de búsqueda, años y capas de fuente; depura
+los textos; registra vacíos y fallas; permite organizar indicios narrativos,
+construir mapas de relaciones y proponer síntesis revisables para lectura
+cercana. No se
+busca automatizar la interpretación, sino producir una mediación metodológica
+auditable para historiadores, artistas, diseñadores y estudios culturales.
+\end{abstract}
+
+\section{Problema cultural y metodológico}
+
+Una narrativa social no aparece en una sola clase de documento. Puede emerger en
+conversaciones cotidianas, circular por la prensa, ser traducida a lenguaje
+institucional y después estabilizarse en estudios académicos. En el caso del
+tatuaje, una misma palabra puede remitir a prácticas artísticas, marcas
+comerciales, procedimientos médicos, identidades juveniles, estigmas laborales o
+regulaciones sanitarias. Si todo se busca junto, el corpus puede crecer, pero
+perder sentido.
+
+El objetivo del procedimiento es construir un corpus situado que conserve tres cosas:
+procedencia, diferencia entre voces y decisiones de limpieza. La pregunta no es
+``qué dice Internet sobre el tatuaje'', sino cómo distintas capas discursivas
+producen, desplazan o disputan sentidos alrededor del tatuaje en un periodo y
+región definidos.
+
+\section{Fases del procedimiento}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{L{0.16\textwidth}L{0.36\textwidth}L{0.38\textwidth}}
+\toprule
+\textbf{Fase} & \textbf{Qué se hace} & \textbf{Por qué se hace} \\
+\midrule
+Observar el campo & Se reconoce el tatuaje como inscripción corporal, práctica visual y relato social. &
+Sitúa el problema antes de convertirlo en búsqueda digital. \\
+\addlinespace
+Delimitar & Se define región, periodo y rubros de sentido: identidad, oficio, salud, memoria, diseño. &
+Evita mezclar sentidos distintos bajo una misma palabra. \\
+\addlinespace
+Reunir voces & Se consulta por capas: prensa, foros, artículos y reportes. &
+Permite distinguir conversación pública, prensa, investigación y documentos institucionales. \\
+\addlinespace
+Cuidar el corpus & Se eliminan duplicados, menús, publicidad, ruido y homónimos. &
+Impide que el ruido de páginas web se vuelva resultado interpretativo. \\
+\addlinespace
+Interpretar relaciones & Se observan expresiones, actores, momentos narrativos, fuentes y tonalidad léxica. &
+Produce indicios y mapas de sentido para lectura crítica. \\
+\addlinespace
+Síntesis crítica & Se proponen nodos relevantes y se vuelve a ejemplos textuales. &
+Prepara una lectura cercana sin presentar el algoritmo como interpretación final. \\
+\bottomrule
+\end{tabular}
+\caption{Fases metodológicas para una lectura situada del tatuaje en fuentes digitales.}
+\label{tab:fases-es}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=7mm]
+  \node[box, fill=gOne, minimum width=31mm] (a) {1. Situar\\archivo corporal};
+  \node[box, fill=gTwo, minimum width=31mm, right=of a] (b) {2. Reunir voces\\capas discursivas};
+  \node[box, fill=gThree, minimum width=31mm, right=of b] (c) {3. Cuidar corpus\\limpiar y auditar};
+  \node[box, fill=gFour, minimum width=31mm, right=of c] (d) {4. Leer relaciones\\síntesis crítica};
+  \draw[arrow] (a) -- (b);
+  \draw[arrow] (b) -- (c);
+  \draw[arrow] (c) -- (d);
+  \draw[softarrow] (d.south) .. controls +(0,-10mm) and +(0,-10mm) .. node[below,font=\scriptsize] {revisión humana: ajustar rubros, exclusiones y lectura} (a.south);
+\end{tikzpicture}%
+}
+\caption{Itinerario interpretativo: el sistema ordena la lectura, no sustituye al investigador.}
+\label{fig:fases-es}
+\end{figure}
+
+\section{Ejemplo conductor: tatuaje}
+
+Para un público de historia, arte, diseño o estudios culturales, el tatuaje no
+debe tratarse como una palabra aislada. Conviene dividirlo en rubros:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{L{0.24\textwidth}L{0.62\textwidth}}
+\toprule
+\textbf{Rubro} & \textbf{Variantes de búsqueda} \\
+\midrule
+Núcleo & tatuaje, tatuajes, tattoo, tattoos, arte corporal \\
+Oficio e industria & tatuador, tatuadora, estudio de tatuajes, artista del tatuaje \\
+Identidad y memoria & significado de tatuaje, tatuaje e identidad, tatuaje y memoria, tatuaje religioso \\
+Sociedad y trabajo & tatuaje y juventud, tatuaje y empleo, tatuaje y discriminación, tatuaje y género \\
+Salud y regulación & tatuaje y salud, tintas para tatuaje, infección, regulación sanitaria \\
+Estética y diseño & diseño de tatuaje, tatuaje tradicional, tatuaje mexicano, body art \\
+\bottomrule
+\end{tabular}
+\caption{Rubros iniciales para el tópico tatuaje. Los rubros son editables y deben validarse por lectura.}
+\label{tab:tatuaje-rubros-es}
+\end{table}
+
+También se declaran exclusiones. En este caso son necesarias porque
+\textit{Tatuaje} puede aparecer como marca de cigarros o como procedimiento
+médico especializado. Excluir \textit{cigar}, \textit{tobacco}, \textit{robusto}
+o \textit{colonoscopic tattooing} no censura el corpus: protege la pregunta de
+investigación.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm]
+  \node[box, fill=gOne, minimum width=32mm] (q) {Pregunta\\práctica cultural};
+  \node[box, fill=gOne, minimum width=31mm, right=of q] (r) {Rubros\\sentidos};
+  \node[box, fill=gTwo, minimum width=32mm, right=of r] (y) {Años y región\\México, 2020--2026};
+  \node[box, fill=gTwo, minimum width=34mm, below=of q] (v) {Capas de voz\\prensa, foros, academia};
+  \node[box, fill=gThree, minimum width=34mm, right=of v] (c) {Cuidado\\limpiar y auditar};
+  \node[box, fill=gFour, minimum width=34mm, right=of c] (m) {Lectura\\relaciones};
+  \draw[arrow] (q) -- (r);
+  \draw[arrow] (r) -- (y);
+  \draw[arrow] (q) -- (v);
+  \draw[arrow] (r) -- (v);
+  \draw[arrow] (y) -- (v);
+  \draw[arrow] (v) -- (c);
+  \draw[arrow] (c) -- (m);
+\end{tikzpicture}%
+}
+\caption{Diseño de corpus para el caso tatuaje: observe la separación entre pregunta cultural, rubros de sentido y capas de voz antes de reunir documentos.}
+\label{fig:corpus-tatuaje-es}
+\end{figure}
+
+\section{De documentos a huellas narrativas}
+
+El sistema guarda una base por cada combinación de rubro, año y capa de fuente.
+Si una búsqueda no produce resultados, el vacío se registra. Esto importa: una
+ausencia también informa sobre el alcance del corpus y sobre los límites de la
+recolección.
+
+La recolección actual usa una estrategia secuencial adaptativa: primero se
+consulta el término base del rubro y sólo se expande a sinónimos si hace falta.
+Esto evita saturar los índices y permite saber qué palabra activó cada hallazgo.
+Para el caso del tatuaje, no es lo mismo recuperar documentos por
+\textit{tatuaje}, \textit{tatuajes}, \textit{tattoo} o \textit{arte corporal};
+cada término arrastra comunidades, idiomas y sesgos distintos.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{L{0.18\textwidth}L{0.25\textwidth}L{0.42\textwidth}}
+\toprule
+\textbf{Paso} & \textbf{Ejemplo} & \textbf{Lectura metodológica} \\
+\midrule
+Entrada & ``tatuaje y salud'', México, 2021, noticias & Se acota un sentido del tópico en una capa pública. \\
+Depuración & Se retiran menús, anuncios, duplicados y homónimos & El corpus no confunde publicidad o ruido con narrativa social. \\
+Descripción & Aparecen términos como tinta, piel, regulación, riesgo & Se producen indicios, no conclusiones. \\
+Relación & Texto--actor--idea--fuente--año & Se observa cómo se conectan voces y conceptos. \\
+Síntesis & Nodo relevante: regulación sanitaria / estudio de tatuajes & Se elige un punto de entrada para lectura cercana. \\
+\bottomrule
+\end{tabular}
+\caption{Mini-demostración del procedimiento con el rubro salud y regulación.}
+\label{tab:mini-demo-es}
+\end{table}
+
+\section{Derechos de fuente y grados de evidencia}
+
+La extracción debe respetar los límites de cada fuente. El sistema no intenta
+entrar a espacios privados, no automatiza sesiones y no evade restricciones. Si
+una página pública permite extracción según \texttt{robots.txt}, se intenta
+obtener texto completo. Si no lo permite, si el sitio es parcial o si hay
+paywall, se conserva sólo una señal trazable: título, resumen, medio, fecha,
+URL y tipo de fuente. Esa señal puede orientar el mapa del corpus, pero no debe
+contarse como cuerpo textual equivalente.
+
+\begin{figure}[H]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=9mm]
+  \node[box, fill=gOne, minimum width=34mm] (i) {Índice público\\RSS, GDELT, OpenAlex};
+  \node[box, fill=gTwo, minimum width=34mm, right=of i] (u) {URL o metadato\\fuente, año, término};
+  \node[box, fill=gThree, minimum width=34mm, right=of u] (p) {Permiso\\robots.txt / acceso};
+  \node[box, fill=gFour, minimum width=34mm, below left=of p] (ok) {Texto completo\\estado ok};
+  \node[box, fill=gFour, minimum width=34mm, below right=of p] (parcial) {Señal parcial\\estado ok\_partial};
+  \node[box, fill=gTwo, minimum width=38mm, below=of ok] (local) {Análisis local\\sin redistribuir textos};
+  \draw[arrow] (i) -- (u);
+  \draw[arrow] (u) -- (p);
+  \draw[arrow] (p) -- node[left,font=\scriptsize] {permitido} (ok);
+  \draw[arrow] (p) -- node[right,font=\scriptsize] {parcial/no permitido} (parcial);
+  \draw[arrow] (ok) -- (local);
+  \draw[arrow] (parcial) -- (local);
+\end{tikzpicture}%
+}
+\caption{Grados de evidencia: texto completo y señal parcial se guardan separados para no exagerar el alcance del corpus.}
+\label{fig:derechos-evidencia-es}
+\end{figure}
+
+Esta diferencia es central para estudiar lo que las personas dicen en red. Los
+foros, Reddit público, blogs y comunidades abiertas aportan señales de
+conversación pública, pero no representan toda la conversación social. Deben
+leerse como huellas indexables, con sesgos de plataforma, idioma, moderación,
+visibilidad y acceso.
+
+\subsection*{Microcaso de lectura}
+
+Una corrida publicable no debe quedarse en el conteo de documentos. Debe mostrar
+al menos una cadena mínima: fuente, fragmento limpiado, etiqueta asignada,
+relación construida y lectura humana. En el caso del tatuaje, una nota de prensa
+sobre tintas o regulación sanitaria puede conectar autoridades de salud,
+estudios de tatuaje y vocabulario de riesgo; una conversación en foro puede
+conectar clientes, dolor, identidad, precio o confianza; un artículo académico
+puede estabilizar vocabulario médico sobre piel, infección o cicatrización.
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{L{0.17\textwidth}L{0.24\textwidth}L{0.23\textwidth}L{0.24\textwidth}}
+\toprule
+\textbf{Capa} & \textbf{Indicio posible} & \textbf{Nodo/relación} & \textbf{Lectura humana} \\
+\midrule
+Prensa & ``regulación de tintas'' & autoridad sanitaria--tinta--riesgo & El tatuaje aparece como asunto público y sanitario. \\
+Foro & ``recomendación de estudio'' & cliente--tatuador--confianza & El oficio se evalúa por experiencia compartida. \\
+Artículo & ``infección cutánea'' & piel--procedimiento--cuidado & El cuerpo se vuelve objeto de saber médico. \\
+\bottomrule
+\end{tabular}
+\caption{Ejemplo de cómo un documento se transforma en entrada de lectura, no en conclusión automática.}
+\label{tab:microcaso-es}
+\end{table}
+
+\section{Mapas de relaciones}
+
+La red narrativa se usa como mapa. Cada texto conecta actores, ideas, fuente,
+año, lugar y momentos del relato. El mapa no prueba por sí mismo una hipótesis;
+ayuda a decidir dónde leer con más atención.
+
+Los actores, ideas y momentos del relato no deben asumirse como entidades
+transparentes. Pueden provenir de reglas locales, diccionarios editables,
+frecuencias de n-gramas, patrones lingüísticos y validación humana. En un tema
+como tatuaje, los actores esperables incluyen tatuadores, clientes, autoridades
+sanitarias, médicos, empleadores, medios y colectivos juveniles; las ideas pueden
+agrupar identidad, memoria, oficio, riesgo, estética, discriminación o cuidado.
+Cada asignación debe poder corregirse desde la lectura.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[node distance=17mm]
+  \node[circle, draw=black!70, very thick, fill=gTwo, minimum size=15mm, align=center] (texto) {Texto};
+  \node[circle, draw=black!70, thick, fill=gOne, above left=of texto, minimum size=14mm] (actor) {Actor};
+  \node[circle, draw=black!70, thick, fill=gOne, above right=of texto, minimum size=17mm, align=center] (momento) {Momento\\del relato};
+  \node[circle, draw=black!70, thick, fill=gThree, right=of texto, minimum size=14mm] (idea) {Idea};
+  \node[circle, draw=black!70, thick, fill=gOne, below left=of texto, minimum size=14mm] (fuente) {Fuente};
+  \node[circle, draw=black!70, thick, fill=gOne, below=of texto, minimum size=12mm] (ano) {Año};
+  \node[circle, draw=black!70, thick, fill=gOne, below right=of texto, minimum size=14mm] (lugar) {Lugar};
+  \draw[arrow] (texto) -- node[left,font=\scriptsize] {menciona} (actor);
+  \draw[arrow] (texto) -- node[right,font=\scriptsize] {contiene} (momento);
+  \draw[arrow] (texto) -- node[above,font=\scriptsize] {usa} (idea);
+  \draw[arrow] (fuente) -- node[left,font=\scriptsize] {publica} (texto);
+  \draw[arrow] (ano) -- node[right,font=\scriptsize] {fecha} (texto);
+  \draw[arrow] (lugar) -- node[right,font=\scriptsize] {sitúa} (texto);
+  \draw[arrow] (actor) -- node[above,font=\scriptsize] {participa en} (momento);
+  \draw[arrow] (momento) -- node[right,font=\scriptsize] {asocia} (idea);
+\end{tikzpicture}
+\caption{Red narrativa mínima: el lector ve qué tipo de relación está siendo registrada.}
+\label{fig:red-es}
+\end{figure}
+
+\section{Tonalidad léxica exploratoria}
+
+La tonalidad léxica no se interpreta como emoción colectiva ni como estado
+psicológico de quienes escriben. Se usa como indicador exploratorio de
+vocabulario valorativo. Por ejemplo, puede mostrar si las noticias hablan del
+tatuaje con términos de riesgo, si los foros usan términos de identidad o si los
+artículos científicos concentran vocabulario de salud y regulación.
+
+El indicador básico compara palabras positivas y negativas, con reglas simples
+de negación e intensificación. El resultado se resume por año y por capa de
+fuente. En una gráfica radial, cada eje representa una capa: prensa, foros,
+artículos o reportes. La interpretación siempre debe volver a ejemplos
+textuales.
+
+\section{Síntesis revisable}
+
+Cuando el mapa tiene muchos elementos, el sistema propone nodos relevantes:
+actores, ideas, fuentes o momentos del relato que concentran relaciones. Esta
+selección no reemplaza la lectura. Sirve para preguntar qué entradas conviene
+leer primero y qué relaciones se perderían si se retiraran ciertos nodos.
+
+\begin{figure}[H]
+\centering
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm]
+  \node[box, fill=gOne, minimum width=34mm] (corpus) {Corpus depurado\\textos y procedencia};
+  \node[box, fill=gTwo, minimum width=34mm, right=of corpus] (mapa) {Mapa de relaciones\\actores, ideas, fuentes};
+  \node[box, fill=gThree, minimum width=34mm, right=of mapa] (nodos) {Nodos relevantes\\posibles entradas};
+  \node[box, fill=gFour, minimum width=36mm, right=of nodos] (lectura) {Lectura cercana\\volver al texto};
+  \draw[arrow] (corpus) -- (mapa);
+  \draw[arrow] (mapa) -- (nodos);
+  \draw[arrow] (nodos) -- (lectura);
+  \draw[softarrow] (lectura.south) .. controls +(0,-11mm) and +(0,-11mm) .. node[below,font=\scriptsize] {ajustar exclusiones, rubros o interpretación} (corpus.south);
+\end{tikzpicture}%
+}
+\caption{La síntesis es revisable: el algoritmo sugiere entradas, la interpretación vuelve al corpus.}
+\label{fig:sintesis-es}
+\end{figure}
+
+\section{Salida reproducible}
+
+La aplicación local exporta un archivo estructurado de evidencia que conserva
+registros filtrados, procedencia, limpieza, clasificación de fuente, tonalidad
+léxica, eventos narrativos, actores, grupos de ideas y mapas de relaciones. Para
+una publicación robusta falta consolidar además un manifiesto de corrida con
+fecha, parámetros, versión del código, cuotas, semillas y huella del corpus
+final.
+
+\section{Límites y sesgos}
+
+El corpus no representa por sí mismo a una sociedad. Representa una colección
+situada de huellas disponibles: lo que los índices encuentran, lo que las
+plataformas permiten consultar, lo que los medios publican y lo que ciertos
+grupos escriben en línea. Puede haber sesgo de idioma, clase social,
+alfabetización digital, centralidad urbana, disponibilidad de fuentes,
+moderación de plataformas, agenda periodística y sobrerrepresentación sanitaria
+o institucional. Las exclusiones también son decisiones interpretativas: retirar
+\textit{colonoscopic tattooing} es razonable si se estudia tatuaje como práctica
+cultural, pero podría ser incorrecto si el rubro buscado es medicina o salud.
+Por eso cada exclusión debe registrarse y justificarse.
+
+\appendix
+\section{Nota técnica mínima}
+
+La selección de nodos relevantes puede formalizarse como una cobertura sobre el
+mapa de relaciones. Se buscan conjuntos pequeños de nodos que mantengan alta
+relevancia y bajo daño estructural. En términos operativos, se comparan tres
+criterios: tamaño del conjunto, peso narrativo de los nodos y relaciones que se
+perderían si esos nodos se retiraran. Los detalles algorítmicos quedan como
+apéndice porque la pregunta principal es interpretativa: ¿qué conjunto de
+actores, ideas o fuentes ofrece una entrada defendible para leer el corpus?
+
+\end{document}

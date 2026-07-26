@@ -1,0 +1,567 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,shapes.misc,calc}
+
+\geometry{letterpaper, margin=1in}
+\hypersetup{colorlinks=true, linkcolor=blue!45!black, urlcolor=blue!45!black}
+
+\definecolor{cInput}{HTML}{E0F2FE}
+\definecolor{cRun}{HTML}{DCFCE7}
+\definecolor{cData}{HTML}{FEF3C7}
+\definecolor{cAnalysis}{HTML}{EDE9FE}
+\definecolor{cWarn}{HTML}{FEE2E2}
+\definecolor{cGraph}{HTML}{CCFBF1}
+\definecolor{cOpt}{HTML}{FCE7F3}
+
+\tikzset{
+  block/.style={rectangle, rounded corners=2mm, draw=black!55, very thick, align=center, minimum width=31mm, minimum height=10mm, font=\small},
+  smallblock/.style={rectangle, rounded corners=2mm, draw=black!55, thick, align=center, minimum width=25mm, minimum height=8mm, font=\scriptsize},
+  phase/.style={rectangle, rounded corners=2mm, draw=black!55, very thick, align=center, minimum width=27mm, minimum height=13mm, font=\scriptsize},
+  decision/.style={diamond, aspect=2.2, draw=black!55, very thick, align=center, inner sep=1pt, font=\scriptsize},
+  arrow/.style={-{Latex[length=2.5mm]}, thick, draw=black!70},
+  dashedarrow/.style={-{Latex[length=2.5mm]}, thick, dashed, draw=black!55},
+  group/.style={rectangle, rounded corners=3mm, draw=black!35, dashed, inner sep=4mm}
+}
+
+\title{Algoritmo local para recolección secuencial y análisis de narrativas}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento describe el algoritmo implementado, desde la aplicación local,
+para construir y analizar un corpus narrativo trazable. La propuesta separa
+rubros de variantes, años y capas de fuente; guarda bases parciales; fusiona
+registros en un archivo estructurado; limpia los textos antes de interpretarlos;
+produce indicios cuantitativos, mapas de relaciones narrativas, disección
+estructural de proposiciones y selecciones revisables de actores, ideas o
+fuentes que merecen lectura cercana. El diseño evita mezclar noticias, foros y
+artículos científicos como si fueran una única voz homogénea. La tesis
+metodológica es pasar de \textit{Big Data} a \textit{Smart Data}: no importa
+acumular textos indiscriminadamente, sino construir evidencia pública,
+estratificada, trazable y conceptualmente pertinente. El resultado no es una
+interpretación automática, sino una infraestructura de lectura: un corpus
+organizado, auditable y preparado para contrastar hipótesis narrativas.
+\end{abstract}
+
+\section{Principio metodológico}
+
+El sistema se diseña para tópicos cambiantes. El tópico puede ser
+\textit{tatuaje}, \textit{programación con IA}, \textit{violencia}, u otro. El
+punto crítico es no buscar una cadena larga con conectores como si fuera una
+consulta única. En lugar de ello, se separan rubros conceptuales:
+\[
+R=\{r_1,r_2,\ldots,r_p\},
+\]
+años:
+\[
+Y=\{y_0,y_0+1,\ldots,y_f\},
+\]
+y capas de fuente:
+\[
+S=\{\text{noticias},\text{foros},\text{artículos},\text{reportes}\}.
+\]
+
+La corrida publicable se ejecuta de manera lineal:
+\[
+\forall r\in R,\quad \forall y\in Y,\quad \forall s\in S.
+\]
+Así se sabe qué parte terminó, qué parte falló y qué capa quedó vacía. Esto es
+preferible a una búsqueda mezclada que produce una base grande pero sesgada.
+
+Este procedimiento no busca medir directamente una realidad social, sino
+construir un corpus trazable de huellas discursivas. Su utilidad está en
+permitir comparar cómo distintos géneros de fuente ---prensa, foros, documentos
+institucionales y literatura académica--- estabilizan, transforman o disputan
+una narrativa a lo largo del tiempo.
+
+La unidad de análisis no es sólo la palabra clave. El sistema identifica
+fuentes, marcos argumentales, cambios temporales, silencios relevantes,
+proposiciones y relaciones entre actores, ideas, documentos y capas de fuente.
+Por ello, los resultados deben leerse como señales estructurales para guiar una
+lectura crítica, no como veredictos de verdad ni como prueba judicial cerrada.
+
+\section{Fases del procedimiento}
+
+Para facilitar la lectura desde humanidades, el algoritmo puede entenderse como
+nueve fases. Cada fase responde una pregunta metodológica distinta. La parte
+computacional no sustituye la interpretación; organiza materiales, deja rastro
+de las decisiones y permite comparar capas discursivas.
+
+\begin{table}[ht]
+\centering
+\small
+\begin{tabular}{p{0.16\textwidth}p{0.37\textwidth}p{0.37\textwidth}}
+\toprule
+\textbf{Fase} & \textbf{Qué se hace} & \textbf{Por qué se hace} \\
+\midrule
+1. Delimitar & Se define el tópico, la región, los años y los rubros de búsqueda. &
+Evita que el corpus sea una mezcla accidental de sentidos distintos del mismo término. \\
+\addlinespace
+2. Reunir voces & Se buscan documentos por año y por capa: noticias, foros,
+artículos y reportes. & Permite distinguir diálogo social, prensa, producción
+académica y documentos institucionales. \\
+\addlinespace
+3. Depurar & Se limpian textos, se eliminan duplicados, menús, publicidad,
+palabras vacías y exclusiones conceptuales. & Reduce ruido antes de construir
+patrones; no se interpreta texto contaminado como si fuera discurso social. \\
+\addlinespace
+4. Describir & Se calculan frecuencias, frases repetidas, tonalidad léxica
+exploratoria y eventos narrativos. & Produce una primera lectura cuantitativa y
+auditable del corpus. \\
+\addlinespace
+5. Podar inteligentemente & Se identifican fuentes con mayor peso estructural,
+marcos repetidos y documentos que sólo actúan como eco. & Evita confundir
+volumen documental con diversidad narrativa. \\
+\addlinespace
+6. Diseccionar & Se extraen proposiciones, actos de habla, relaciones causales,
+falacias heurísticas, silencios y vectores posibles de desinformación. & Permite
+pasar de contar palabras a observar estructura argumental. \\
+\addlinespace
+7. Relacionar & Se construyen redes de documentos, actores, fuentes, años,
+conceptos, proposiciones y etapas narrativas. & Permite observar cómo se
+conectan voces, temas y momentos del relato. \\
+\addlinespace
+8. Seleccionar & Se resuelve el problema del cubridor nodal sobre la red
+ponderada y se comparan métodos bajo el mismo presupuesto. & Resume la red en
+un conjunto revisable de nodos que cubren relaciones relevantes. \\
+\addlinespace
+9. Sintetizar & Se exportan corpus, tablas, grafos, trazabilidad técnica y
+resultados de métodos. & Facilita comparar soluciones, revisar evidencia y
+preparar análisis interpretativo o publicación. \\
+\bottomrule
+\end{tabular}
+\caption{Fases del sistema explicadas para lectores no especializados en computación.}
+\label{fig:tabla-fases}
+\end{table}
+
+\begin{figure}[ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=7mm and 5mm]
+  \node[phase, fill=cInput] (f1) {1\\Delimitar\\tema y periodo};
+  \node[phase, fill=cRun, right=of f1] (f2) {2\\Reunir\\voces};
+  \node[phase, fill=cData, right=of f2] (f3) {3\\Depurar\\textos};
+  \node[phase, fill=cAnalysis, right=of f3] (f4) {4\\Describir\\patrones};
+  \node[phase, fill=cData, below=of f4] (f5) {5\\Podar\\Smart Data};
+  \node[phase, fill=cAnalysis, left=of f5] (f6) {6\\Diseccionar\\proposiciones};
+  \node[phase, fill=cGraph, left=of f6] (f7) {7\\Relacionar\\en redes};
+  \node[phase, fill=cOpt, left=of f7] (f8) {8\\Seleccionar\\cubridor};
+  \node[phase, fill=cWarn, below=of f8] (f9) {9\\Sintetizar\\evidencia};
+
+  \draw[arrow] (f1) -- (f2);
+  \draw[arrow] (f2) -- (f3);
+  \draw[arrow] (f3) -- (f4);
+  \draw[arrow] (f4) -- (f5);
+  \draw[arrow] (f5) -- (f6);
+  \draw[arrow] (f6) -- (f7);
+  \draw[arrow] (f7) -- (f8);
+  \draw[arrow] (f8) -- (f9);
+  \draw[dashedarrow] (f9.south) .. controls +(0,-16mm) and +(0,-16mm) .. node[below,font=\scriptsize] {revisión humana y ajuste del corpus} (f1.south);
+\end{tikzpicture}%
+}
+\caption{Resumen de fases para lectura humanística: el proceso es iterativo y auditable.}
+\label{fig:fases}
+\end{figure}
+
+Las fases no constituyen una cadena mecánica de descubrimiento. Cada una reduce
+una forma distinta de ambigüedad: la delimitación reduce ambigüedad conceptual;
+la recolección reduce ambigüedad de procedencia; la depuración reduce ruido
+documental; la descripción produce indicios; la poda evita acumulación
+redundante; la disección separa proposiciones y actos de habla; la red muestra
+relaciones posibles; el cubridor resume estructura; y la síntesis prepara
+preguntas interpretativas que deben volver al corpus.
+
+\section{Arquitectura general}
+
+\begin{figure}[ht]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[node distance=10mm and 9mm]
+  \node[block, fill=cInput] (topic) {Pregunta de estudio\\tópico y sentido};
+  \node[block, fill=cInput, right=of topic] (rubrics) {Rubros de búsqueda\\núcleo, identidad,\ salud, oficio};
+  \node[block, fill=cInput, right=of rubrics] (scope) {Marco del corpus\\región y años};
+
+  \node[block, fill=cRun, below=of topic] (plan) {Plan de lectura\\rubro $\times$ año $\times$ fuente};
+  \node[block, fill=cRun, right=of plan] (search) {Reunir voces\\prensa, foros,\ artículos, reportes};
+  \node[block, fill=cRun, right=of search] (fetch) {Recuperar material\\texto completo o señal parcial};
+
+  \node[block, fill=cData, below=of plan] (clean) {Depurar textos\\limpieza y exclusiones};
+  \node[block, fill=cData, right=of clean] (partial) {Guardar rastro\\una base por paso};
+  \node[block, fill=cData, right=of partial] (merge) {Unir corpus\\sin duplicados};
+
+  \node[block, fill=cAnalysis, below=of clean] (analysis) {Describir relatos\\frases, actores,\ eventos, tono};
+  \node[block, fill=cGraph, right=of analysis] (graphs) {Relacionar elementos\\red narrativa y red semántica};
+  \node[block, fill=cOpt, right=of graphs] (cover) {Sintetizar estructura\\nodos que explican relaciones};
+
+  \node[block, fill=cData, below=of graphs] (export) {Archivo final\\corpus y análisis reproducible};
+
+  \draw[arrow] (topic) -- (rubrics);
+  \draw[arrow] (rubrics) -- (scope);
+  \draw[arrow] (topic) -- (plan);
+  \draw[arrow] (rubrics) -- (plan);
+  \draw[arrow] (scope) -- (plan);
+  \draw[arrow] (plan) -- (search);
+  \draw[arrow] (search) -- (fetch);
+  \draw[arrow] (fetch) -- (clean);
+  \draw[arrow] (clean) -- (partial);
+  \draw[arrow] (partial) -- (merge);
+  \draw[arrow] (merge) -- (analysis);
+  \draw[arrow] (analysis) -- (graphs);
+  \draw[arrow] (graphs) -- (cover);
+  \draw[arrow] (analysis) -- (export);
+  \draw[arrow] (graphs) -- (export);
+  \draw[arrow] (cover) -- (export);
+\end{tikzpicture}%
+}
+\caption{Arquitectura general expresada como flujo de decisiones interpretativas y cómputo local.}
+\label{fig:arquitectura}
+\end{figure}
+
+La Figura~\ref{fig:arquitectura} debe leerse de izquierda a derecha y de arriba
+abajo. La primera línea corresponde a decisiones de investigación: qué se estudia, con qué
+variantes y en qué marco temporal o geográfico. La segunda línea corresponde a
+la recolección: reunir voces sin confundirlas. La tercera línea corresponde al
+cuidado del corpus: limpiar, registrar y fusionar sin perder trazabilidad. La
+última línea corresponde al análisis: describir patrones, observar relaciones y
+producir una síntesis revisable.
+
+\section{Corrida secuencial por rubro, término, año y fuente}
+
+La recolección se define como un conjunto de tareas:
+\[
+T=\{(r,v,y,s): r\in R,\ v\in V_r,\ y\in Y,\ s\in S^\star\},
+\]
+donde \(V_r\) es la lista ordenada de términos y sinónimos del rubro \(r\), y
+\(S^\star\subseteq S\) son las capas seleccionadas por el usuario. Cada tarea
+usa un solo término \(v\), no todos los sinónimos a la vez. Si una cuota anual
+por tipo de fuente ya se cumplió, los pasos restantes de ese año y capa se
+saltan. Cada tarea produce una base parcial \(D_{r,v,y,s}\). La base total antes
+de análisis es:
+\[
+D=\bigcup_{r\in R}\bigcup_{v\in V_r}\bigcup_{y\in Y}\bigcup_{s\in S^\star}D_{r,v,y,s},
+\]
+desduplicada por URL o título.
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=9mm and 7mm]
+  \node[smallblock, fill=cInput] (start) {Inicio};
+  \node[smallblock, fill=cRun, below=of start] (rubro) {Elegir un rubro\\del tema};
+  \node[smallblock, fill=cRun, below=of rubro] (term) {Elegir un término\\del rubro};
+  \node[smallblock, fill=cRun, below=of term] (year) {Elegir un año};
+  \node[smallblock, fill=cRun, below=of year] (source) {Elegir una capa\\de fuente};
+  \node[smallblock, fill=cRun, below=of source] (query) {Formular búsqueda\\clara y breve};
+  \node[smallblock, fill=cRun, below=of query] (search) {Consultar\\fuentes públicas};
+  \node[decision, fill=cWarn, below=of search] (found) {¿hay\\resultados?};
+  \node[smallblock, fill=cData, below left=10mm and 13mm of found] (empty) {Registrar\\vacío o falla};
+  \node[smallblock, fill=cRun, below right=10mm and 13mm of found] (download) {Recuperar texto\\o resumen};
+  \node[smallblock, fill=cData, below=of download] (save) {Guardar\\evidencia};
+  \node[decision, fill=cWarn, below=of save] (more) {¿faltan\\pasos?};
+  \node[smallblock, fill=cData, below=of more] (merge) {Unir corpus\\sin duplicados};
+
+  \draw[arrow] (start) -- (rubro);
+  \draw[arrow] (rubro) -- (term);
+  \draw[arrow] (term) -- (year);
+  \draw[arrow] (year) -- (source);
+  \draw[arrow] (source) -- (query);
+  \draw[arrow] (query) -- (search);
+  \draw[arrow] (search) -- (found);
+  \draw[arrow] (found) -- node[left,font=\scriptsize] {no} (empty);
+  \draw[arrow] (found) -- node[right,font=\scriptsize] {sí} (download);
+  \draw[arrow] (download) -- (save);
+  \draw[arrow] (save) -- (more);
+  \draw[arrow] (empty) |- (more);
+  \draw[arrow] (more) -- node[right,font=\scriptsize] {no} (merge);
+  \draw[dashedarrow] (more.west) .. controls +(-34mm,0) and +(-34mm,0) .. node[left,font=\scriptsize] {sí} (term.west);
+\end{tikzpicture}
+\caption{Ejecución secuencial adaptativa. Cada paso reporta rubro, término, año, capa de fuente y número de documentos.}
+\end{figure}
+
+Esta fase existe para evitar una ilusión frecuente: obtener muchos documentos
+pero de una sola clase. Si sólo aparecen artículos científicos, no hay base
+suficiente para hablar de conversación social; si sólo aparecen noticias, falta
+contrastar con foros o producción académica. La corrida secuencial muestra los
+vacíos en lugar de ocultarlos.
+
+\section{Extracción responsable y estados de evidencia}
+
+La recolección distingue entre encontrar una referencia, descargar texto completo
+y conservar sólo una señal parcial. Esta distinción es ética y metodológica:
+evita tratar un resumen RSS, un título indexado o una página con restricción
+como si fuera texto completo.
+
+\begin{figure}[ht]
+\centering
+\resizebox{0.98\textwidth}{!}{%
+\begin{tikzpicture}[node distance=8mm and 8mm]
+  \node[block, fill=cInput] (index) {Índice público\\GDELT, RSS,\ OpenAlex, Crossref};
+  \node[block, fill=cRun, right=of index] (candidate) {URL o metadato\\con fuente, año,\ rubro y término};
+  \node[decision, fill=cWarn, right=of candidate] (allowed) {¿permite\\robots.txt?};
+  \node[block, fill=cRun, below right=8mm and 8mm of allowed] (full) {Descargar HTML/PDF\\si es público};
+  \node[block, fill=cData, above right=8mm and 8mm of allowed] (partial) {Guardar señal parcial\\título/resumen/metadato};
+  \node[block, fill=cData, right=of full] (status) {Estado explícito\\ok, ok\_partial,\ too\_short, error};
+  \node[block, fill=cAnalysis, right=of partial] (audit) {Auditoría\\acceso, fuente,\ permiso, fecha};
+  \node[block, fill=cGraph, right=of status] (analysis) {Análisis local\\sin subir textos\\a servicios externos};
+
+  \draw[arrow] (index) -- (candidate);
+  \draw[arrow] (candidate) -- (allowed);
+  \draw[arrow] (allowed) -- node[above,font=\scriptsize] {no/paywall/parcial} (partial);
+  \draw[arrow] (allowed) -- node[right,font=\scriptsize] {sí} (full);
+  \draw[arrow] (full) -- (status);
+  \draw[arrow] (partial) -- (audit);
+  \draw[arrow] (audit) |- (status);
+  \draw[arrow] (status) -- (analysis);
+\end{tikzpicture}%
+}
+\caption{Extracción responsable: el sistema no fuerza sitios cerrados; conserva metadatos parciales cuando no hay permiso de texto completo.}
+\label{fig:extraccion-responsable}
+\end{figure}
+
+En consecuencia, los estados no son detalles técnicos sino categorías de
+evidencia. \texttt{ok} indica texto suficiente para análisis textual completo;
+\texttt{ok\_partial} indica una señal pública útil pero limitada; \texttt{too\_short}
+preserva registros breves que no deben inflar análisis de texto; y los errores
+se reportan como límites de la muestra. La publicación debe informar cuántos
+registros pertenecen a cada estado.
+
+\section{Limpieza, composición de frases y análisis local}
+
+Para cada documento \(d\), el texto se normaliza antes de construir conceptos:
+\[
+\text{text}(d)\to \text{lowercase}\to \text{normalización}\to
+\text{stopwords}\to \text{tokens}.
+\]
+Luego se extraen monogramas, bigramas y trigramas. Si una frase repetida explica
+la mayor parte de las apariciones de sus componentes, se usa como nodo canónico:
+\[
+q\prec p
+\quad\text{si}\quad
+q\subset p,\qquad
+\frac{freq(p)}{freq(q)}\geq \theta,\qquad freq(p)\geq 2.
+\]
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=10mm and 8mm]
+  \node[block, fill=cData] (raw) {Material reunido\\notas, foros,\ artículos};
+  \node[block, fill=cData, right=of raw] (norm) {Texto ordenado\\sin menús,\ ruido ni duplicados};
+  \node[block, fill=cData, right=of norm] (tokens) {Palabras útiles\\vocabulario depurado};
+
+  \node[block, fill=cAnalysis, below=of raw] (ngrams) {Expresiones frecuentes\\una, dos o tres palabras};
+  \node[block, fill=cAnalysis, right=of ngrams] (phrases) {Frases estables\\conceptos repetidos};
+  \node[block, fill=cAnalysis, right=of phrases] (events) {Relato por documento\\actores, conflicto,\ resolución};
+
+  \node[block, fill=cGraph, below=of phrases] (graphs) {Mapas de relaciones\\frecuencia y conexión};
+
+  \draw[arrow] (raw) -- (norm);
+  \draw[arrow] (norm) -- (tokens);
+  \draw[arrow] (tokens) -- (ngrams);
+  \draw[arrow] (ngrams) -- (phrases);
+  \draw[arrow] (tokens) -- (events);
+  \draw[arrow] (phrases) -- (graphs);
+  \draw[arrow] (events) -- (graphs);
+\end{tikzpicture}
+\caption{Preparación del texto antes de construir mapas de relaciones.}
+\end{figure}
+
+La limpieza no es un trámite técnico menor. En páginas web, el texto puede traer
+menús, publicidad, biografías de autores, notas relacionadas o palabras vacías.
+Si ese ruido entra al análisis, la red puede destacar términos irrelevantes. Por
+eso se depura antes de contar palabras, detectar frases o construir relaciones.
+La composición de frases busca respetar unidades de sentido: una expresión
+repetida como \textit{arte corporal} o \textit{tatuaje religioso} puede ser más
+informativa que sus palabras separadas.
+
+\section{Tonalidad léxica local y radar por fuente}
+
+La tonalidad léxica se calcula con un léxico local bilingüe. Para cada documento
+se parte de:
+\[
+tono(d)=
+\frac{pos(d)-neg(d)}{pos(d)+neg(d)},
+\]
+con \(tono(d)=0\) si no hay términos positivos ni negativos. En la aplicación
+se incorporan reglas simples de negación e intensificación: expresiones como
+``no seguro'' invierten la orientación inmediata, mientras que intensificadores
+como ``muy'' aumentan el peso local de una palabra valorativa. Para graficar en
+radar se usa:
+\[
+rad(d)=\frac{tono(d)+1}{2}\in[0,1].
+\]
+El promedio por año y fuente es:
+\[
+\bar{s}_{y,c}=
+\frac{1}{|D_{y,c}|}\sum_{d\in D_{y,c}}tono(d).
+\]
+Cada eje del radar representa un tipo de fuente. Esta medición es exploratoria:
+sirve para comparar capas discursivas, no para inferir emociones individuales.
+
+En términos interpretativos, el radar no dice ``lo que siente la sociedad'' ni
+describe estados psicológicos de autores individuales. Dice si, dentro del
+corpus recolectado, una capa discursiva usa con mayor frecuencia vocabulario
+valorativo positivo, negativo o mixto. Por eso debe leerse junto con ejemplos
+textuales y con la distribución de fuentes por año.
+
+\section{Redes construidas}
+
+\begin{figure}[ht]
+\centering
+\begin{tikzpicture}[node distance=18mm]
+  \node[circle, draw, fill=cData, minimum size=15mm] (doc) {Texto};
+  \node[circle, draw, fill=cAnalysis, above left=of doc] (actor) {Actor};
+  \node[circle, draw, fill=cAnalysis, above right=of doc, align=center] (stage) {Momento\\relato};
+  \node[circle, draw, fill=cGraph, right=of doc] (concept) {Idea};
+  \node[circle, draw, fill=cInput, below left=of doc] (source) {Fuente};
+  \node[circle, draw, fill=cInput, below=of doc] (year) {Año};
+  \node[circle, draw, fill=cInput, below right=of doc] (loc) {Lugar};
+
+  \draw[arrow] (doc) -- node[font=\scriptsize,left] {menciona} (actor);
+  \draw[arrow] (doc) -- node[font=\scriptsize,right] {contiene} (stage);
+  \draw[arrow] (doc) -- node[font=\scriptsize,above] {usa} (concept);
+  \draw[arrow] (source) -- node[font=\scriptsize,left] {publica} (doc);
+  \draw[arrow] (year) -- node[font=\scriptsize] {fecha} (doc);
+  \draw[arrow] (loc) -- node[font=\scriptsize,right] {localiza} (doc);
+  \draw[arrow] (actor) -- node[font=\scriptsize,above] {participa en} (stage);
+  \draw[arrow] (stage) -- node[font=\scriptsize,above] {asocia} (concept);
+\end{tikzpicture}
+\caption{Red narrativa: cada texto conecta actores, ideas, momentos del relato, fuentes, años y lugares.}
+\label{fig:red-narrativa}
+\end{figure}
+
+La red se usa como mapa de relaciones, no como sustituto de lectura crítica.
+Permite observar qué actores aparecen cerca de qué ideas, qué momentos del
+relato se repiten, qué fuentes concentran ciertos temas y cómo cambian esos
+patrones por año o localización.
+
+Los pesos se asignan por conteo:
+\[
+w_a=\sum_{d\in D}\mathbf{1}\{a \text{ aparece en }d\}.
+\]
+Se conserva el peso crudo y se normaliza:
+\[
+\widetilde{w}_a=\frac{w_a}{\max_{b\in A}w_b}.
+\]
+La red semántica usa coocurrencias entre conceptos. El grafo de conocimiento
+agrega conceptos, fuentes, años, idioma, localización y tipo de fuente. Cuando
+Louvain está disponible, se calculan comunidades; si no, se reporta la
+alternativa local usada.
+
+\section{Cubridor nodal multiobjetivo}
+
+Esta sección formaliza una pregunta interpretativa simple: si el mapa narrativo
+contiene demasiados elementos para revisarlos uno por uno, ¿qué conjunto pequeño
+de actores, ideas, fuentes o momentos del relato permite iniciar una lectura
+crítica sin borrar la complejidad de la red? En adelante llamamos nodos
+relevantes a los elementos que concentran relaciones dentro del corpus. La
+formalización matemática permite comparar distintas selecciones, pero la
+relevancia final depende de lectura crítica y contraste con ejemplos textuales.
+
+Sea \(G=(V,A)\) una red ponderada. El universo del problema es el conjunto de
+aristas objetivo:
+\[
+{\mathcal U}=A^\star\subseteq A.
+\]
+Cada nodo candidato \(v\in B\subseteq V\) cubre sus aristas incidentes:
+\[
+S_v=\{a\in A^\star:a\sim v\}.
+\]
+La solución es un conjunto \(C\subseteq B\). Con variables binarias \(x_v\) y
+\(r_a\):
+\[
+x_v=1\Leftrightarrow v\in C,\qquad
+r_a=1\Leftrightarrow a\text{ toca algún nodo seleccionado}.
+\]
+La condición de arista removida se modela con:
+\[
+r_a\geq b_{av}x_v,\quad \forall a\in A^\star,\ \forall v\in B,
+\]
+\[
+r_a\leq\sum_{v\in B}b_{av}x_v,\quad \forall a\in A^\star.
+\]
+Esto evita confundir el daño estructural con el subgrafo inducido. Una arista se
+cuenta como perdida si al retirar el conjunto seleccionado toca al menos un nodo
+del cubridor.
+
+Los objetivos normalizados son:
+\[
+f_1(C)=\frac{\sum_v x_v}{|B|}\quad \text{minimizar},
+\]
+\[
+f_2(C)=\frac{\sum_v\sigma_vx_v}{\sum_v\sigma_v}\quad \text{maximizar},
+\]
+\[
+f_3(C)=\frac{\sum_a w_ar_a}{\sum_a w_a}\quad \text{minimizar}.
+\]
+
+\begin{figure}[ht]
+\centering
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=10mm and 9mm]
+  \node[block, fill=cData] (corpus) {Corpus depurado\\textos y procedencia};
+  \node[block, fill=cGraph, right=of corpus] (graph) {Mapa de relaciones\\actores, ideas,\ fuentes};
+  \node[block, fill=cOpt, right=of graph] (candidates) {Nodos candidatos\\posibles síntesis};
+  \node[block, fill=cOpt, right=of candidates] (archive) {Opciones no superadas\\varias síntesis posibles};
+  \node[block, fill=cAnalysis, below=of archive] (review) {Revisión humana\\volver a ejemplos\ textuales};
+  \node[block, fill=cAnalysis, below=of graph] (metrics) {Comparación común\\tamaño, relevancia,\ daño estructural};
+
+  \draw[arrow] (corpus) -- (graph);
+  \draw[arrow] (graph) -- (candidates);
+  \draw[arrow] (candidates) -- (archive);
+  \draw[arrow] (archive) -- (review);
+  \draw[arrow] (archive) -- (metrics);
+  \draw[dashedarrow] (review) .. controls +(0,-16mm) and +(0,-16mm) .. node[below,font=\scriptsize] {ajuste interpretativo} (corpus);
+\end{tikzpicture}%
+}
+\caption{Síntesis revisable: del corpus al mapa, del mapa a nodos relevantes y de allí a lectura crítica.}
+\label{fig:sintesis}
+\end{figure}
+
+La última fase selecciona un conjunto pequeño de nodos que ayude a explicar el
+mapa sin destruirlo. Esta selección no pretende reemplazar el análisis
+interpretativo. Funciona como una herramienta para preguntar: ¿qué actores,
+ideas o fuentes son centrales?, ¿qué relaciones se perderían si quitáramos esos
+nodos?, ¿hay varias síntesis igualmente defendibles?
+
+La aplicación puede comparar varias estrategias de búsqueda de soluciones:
+barrido glotón por prioridades, búsqueda evolutiva multiobjetivo, recocido
+multiobjetivo y una adaptación multiobjetivo del método de composición musical.
+Para no cargar la figura con siglas, la Figura~\ref{fig:sintesis} muestra la
+pregunta común que comparten esos métodos.
+
+La factibilidad se compara con criterio de Coello:
+\[
+\text{factible} \succ \text{infactible}.
+\]
+Entre dos infactibles gana la menor violación total. Entre dos factibles se
+aplica dominancia de Pareto. Todos los métodos deben usar el mismo presupuesto
+de evaluaciones de la función objetivo.
+
+El MMC-MO resuelve una sola vez las relajaciones monoobjetivo de referencia y
+las guarda como memoria inicial. Después modifica esa guía con soluciones no
+dominadas encontradas durante la búsqueda; no debe resolver los problemas
+relajados en cada iteración.
+
+\section{Exportación final}
+
+La salida de análisis se integra en:
+\[
+\texttt{narrative\_analysis\_unified.json}.
+\]
+Este archivo contiene registros filtrados, tonalidad léxica, eventos narrativos,
+actores, grupos de ideas, red narrativa, red semántica, grafo de conocimiento,
+cubridor y frente Pareto. Es la unidad reproducible para publicación y análisis
+posterior.
+
+\end{document}

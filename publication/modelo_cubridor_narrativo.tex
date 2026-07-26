@@ -1,0 +1,509 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\geometry{letterpaper, margin=1in}
+
+\title{Modelo local de red narrativa ponderada y cubridor nodal}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Objeto y alcance}
+
+Se propone un sistema local para analizar narrativas en corpus documentales.
+El sistema no envía textos a modelos externos. Extrae documentos, limpia y
+normaliza texto, clasifica fuentes, identifica estructura narrativa y construye
+una red compleja ponderada para resolver un cubridor nodal narrativo. El objetivo
+no es inferir ``la narrativa total'' de un tema, sino producir una muestra
+auditable, filtrable y reproducible de relaciones narrativas.
+
+El modelo adopta una lógica de \textit{Smart Data}: antes de optimizar, separa
+capas de fuente, elimina ruido, identifica marcos argumentales, detecta ecos
+documentales, registra cambios temporales y conserva trazabilidad técnica. Por
+lo tanto, el cubridor no se aplica sobre texto crudo, sino sobre una red ya
+normalizada, estratificada y revisable.
+
+La tubería separa explícitamente cuatro géneros de fuente: artículos
+científicos abiertos, noticias, foros/discusiones públicas y fuentes
+institucionales o industriales. Esta separación evita mezclar evidencia de
+distinta naturaleza como si tuviera el mismo peso.
+
+\section{Preprocesamiento y extracción narrativa}
+
+Antes del análisis lingüístico, los textos se homogeneizan en minúsculas, se
+normalizan acentos, se eliminan URL, puntuación no informativa y palabras vacías
+en español e inglés. La extracción de monogramas, bigramas, trigramas y redes de
+coocurrencia se realiza sobre este texto normalizado. Para detectar personas u
+organizaciones se conserva también el texto editorial original, pero se filtran
+etiquetas metodológicas y ruido como \textit{abstract}, \textit{conclusion},
+\textit{journal}, nombres de fuente y términos que son el propio tópico de
+búsqueda.
+
+Para cada documento $d_i$ se extraen cinco etapas narrativas:
+\[
+E=\{\text{evento inicial},\text{conflicto},\text{punto de cambio},
+\text{resolución},\text{consecuencias}\}.
+\]
+También se extraen actores, fuente, año, localización y tipo de fuente. La
+extracción es heurística y auditable: cada etapa conserva la oración detectada y
+los marcadores textuales que activaron la clasificación. Los actores se tratan
+como candidatos, no como verdad automática.
+
+Además, se extraen proposiciones simples de la forma sujeto--verbo--objeto,
+actos de habla aproximados, marcadores de causalidad y señales argumentales. Las
+salidas no se interpretan como prueba de verdad, sino como una lista de lugares
+del corpus que requieren lectura humana.
+
+\section{Núcleo Smart Data y ontología de relaciones}
+
+Antes de construir el cubridor, el sistema organiza la información en cuatro
+capas: cartografía de fuentes, marcos argumentales, evolución temporal y
+silencios. Para cada documento se estiman marcos del tipo:
+\[
+M_d=(problema_d, culpable_d, solucion_d, urgencia_d),
+\]
+cuando el texto contiene señales suficientes. Si varios documentos repiten el
+mismo marco, se registra como eco y no como diversidad narrativa adicional.
+
+La red distingue relaciones como:
+\[
+{\mathcal R}=\{
+\text{afirma},\text{apoya},\text{critica},\text{causa},\text{amplifica},
+\text{contradice},\text{silencia},\text{contextualiza}
+\}.
+\]
+Estas etiquetas son operativas y revisables. No prueban intencionalidad; sirven
+para ordenar el análisis y hacer visible qué tipo de conexión sostiene cada
+arista.
+
+\section{Validación humana de actores}
+
+Los actores automáticos no se consideran definitivos. El sistema incorpora una
+intervención humana para aceptar, corregir, rechazar o agregar actores por
+documento. La validación se guarda localmente en \texttt{actor\_validation.json}
+con estado, validador, notas y fecha. Cuando existe validación, la red narrativa
+usa los actores validados; si el registro es rechazado, el documento no aporta
+actores a la red.
+
+\section{Red narrativa}
+
+La red narrativa se define como:
+\[
+G=(V,A,w,\tau,\sigma),
+\]
+donde $V$ es el conjunto de nodos, $A$ el conjunto de aristas ponderadas,
+$w:A\to \mathbb{R}^{+}$ asigna peso a cada relación, $\tau:V\to{\mathcal T}$
+indica el tipo de nodo y $\sigma:V\to \mathbb{R}^{+}$ asigna importancia
+estructural-narrativa al nodo.
+
+Los nodos incluyen:
+\[
+V=V_D\cup V_R\cup V_Q\cup V_F\cup V_T\cup V_L\cup V_C\cup V_N,
+\]
+donde $V_D$ son documentos, $V_R$ actores, $V_Q$ etapas narrativas, $V_F$
+fuentes, $V_T$ años, $V_L$ localizaciones, $V_C$ tipos de fuente y $V_N$
+conceptos lingüísticos: monogramas, bigramas y trigramas.
+
+Además se define una capa de flujo narrativo:
+\[
+F=\{\text{diálogo individual},\text{noticia},\text{derivación técnica},
+\text{investigación},\text{otras derivaciones}\}.
+\]
+Esta capa no impone peso automático. Sirve para observar circulación: el diálogo
+individual puede preceder a la noticia, la noticia puede preceder a la
+investigación, y los resultados de investigación pueden retroalimentar diálogos
+y noticias posteriores.
+
+Las aristas representan relaciones como:
+\begin{itemize}
+\item documento--actor, documento--etapa y documento--concepto;
+\item actor--etapa, fuente--etapa, año--etapa y localización--etapa;
+\item fuente--concepto y coocurrencia concepto--concepto.
+\end{itemize}
+Cada arista $a\in A$ se representa como una terna:
+\[
+a=(i,j,\rho),\quad i,j\in V,\quad \rho\in{\mathcal R},
+\]
+donde $\rho$ es el tipo de relación. Para evitar introducir una jerarquía
+artificial entre elementos de narrativa social, el modo base usa ponderación
+neutral:
+\[
+w_a = \sum_{d\in D}\mathbf{1}\{a \text{ aparece en } d\}.
+\]
+Así, una relación pesa más sólo porque aparece más veces en el corpus filtrado,
+no porque el investigador haya decidido de antemano que una etapa, fuente o
+actor vale más que otro. Los tipos de fuente se usan para estratificar y
+comparar resultados. Si se usa un peso de evidencia \(\omega_d\), debe
+declararse como análisis de sensibilidad:
+\[
+w_a^{sens} = \sum_{d\in D}\mathbf{1}\{a \text{ aparece en } d\}\cdot \omega_d.
+\]
+Esta distinción es importante porque distintos pesos producen sesgos distintos
+en la red y, por tanto, en el cubridor.
+
+Para comparación estructural se conserva el conteo crudo y se añade una versión
+normalizada:
+\[
+\widetilde{w}_a=\frac{w_a}{\max_{b\in A}w_b}\in[0,1],
+\qquad
+\widetilde{c}_v=\frac{c_v}{\max_{u\in V}c_u}\in[0,1],
+\]
+donde \(c_v\) es el conteo de apariciones del nodo. El grado ponderado también
+se normaliza:
+\[
+\widetilde{d}^{\,w}_v=
+\frac{\sum_{a\sim v}w_a}{\max_{u\in V}\sum_{b\sim u}w_b}.
+\]
+Así, los pesos usados para comparar redes oscilan entre 0 y 1, mientras que los
+conteos crudos quedan disponibles para auditoría.
+
+Antes de crear los grafos semántico y de conocimiento se realiza composición de
+frases. Si un monograma o bigrama está explicado mayoritariamente por una frase
+repetida más larga, se marca como absorbido:
+\[
+q \prec p
+\quad \text{si}\quad
+q \subset p
+\ \text{y}\ 
+\frac{freq(p)}{freq(q)}\geq \theta.
+\]
+Por ejemplo, si \textit{violencia social} explica la mayoría de apariciones de
+\textit{violencia} y \textit{social}, el nodo principal es la frase completa y
+las aristas de coocurrencia y documento--concepto se construyen con esa unidad
+canónica. Para evitar conceptos accidentales, la frase canónica debe repetirse
+al menos dos veces en el corpus filtrado.
+
+La importancia nodal usada por el cubridor combina frecuencia y estructura, sin
+ponderar por tipo narrativo en el escenario base:
+\[
+\sigma_v =
+\gamma_1\widetilde{c}_v+
+\gamma_2\widetilde{d}^{\,w}_v+
+\gamma_3\widehat{ev}_v+
+\gamma_4\widehat{val}_v,
+\]
+donde $\widehat{freq}_v$ es frecuencia normalizada, $\widehat{deg}^{\,w}_v$ es
+grado ponderado normalizado, $\widehat{ev}_v$ es evidencia promedio asociada al
+nodo y $\widehat{val}_v$ registra validación humana. En el análisis base se
+recomienda fijar \(\gamma_3=0\) si se mezclan géneros de fuente, y usar
+\(\widehat{ev}_v\) sólo en corridas de sensibilidad o en análisis separado por
+tipo de fuente. Los parámetros $\gamma_i\geq 0$ satisfacen $\sum_i\gamma_i=1$.
+
+\section{Problema multiobjetivo de cobertura de conjuntos}
+
+El problema se formula como una adaptación explícita del \textit{set covering
+problem} (SCP). Sea el universo de relaciones que se desea explicar:
+\[
+{\mathcal U}=A^\star\subseteq A,
+\]
+donde $A^\star$ se obtiene aplicando filtros metodológicos: tipos de arista
+permitidos, peso mínimo, fuentes incluidas y exclusiones manuales. Cada nodo
+candidato $v\in B\subseteq V$ define un subconjunto:
+\[
+S_v=\{a\in A^\star: a \text{ es incidente a } v\}.
+\]
+La familia de subconjuntos es:
+\[
+{\mathcal S}=\{S_v:v\in B\}.
+\]
+Una cobertura clásica es una subfamilia:
+\[
+{\mathcal C}\subseteq{\mathcal S}
+\]
+tal que:
+\[
+\bigcup_{S_v\in{\mathcal C}}S_v={\mathcal U}.
+\]
+En términos nodales, seleccionar ${\mathcal C}$ equivale a seleccionar un
+subconjunto de nodos $C\subseteq B$.
+
+La versión de decisión pregunta si existe una cobertura con $|C|\leq k$. Esta
+forma corresponde al problema clásico NP-completo de cobertura de conjuntos. En
+la aplicación narrativa se usa una versión de optimización multiobjetivo: se
+busca un conjunto de nodos pequeño e importante, pero se penaliza el daño
+estructural producido si ese conjunto se retira de la red.
+
+\subsection{Variables de decisión}
+
+Para cada nodo candidato $v\in B$:
+\[
+x_v =
+\begin{cases}
+1, & \text{si el nodo }v\text{ es seleccionado},\\
+0, & \text{en otro caso}.
+\end{cases}
+\]
+Para cada arista objetivo $a\in A^\star$:
+\[
+r_a =
+\begin{cases}
+1, & \text{si la arista }a\text{ se elimina al retirar }C,\\
+0, & \text{en otro caso}.
+\end{cases}
+\]
+Definimos además la matriz de incidencia:
+\[
+b_{av} =
+\begin{cases}
+1, & \text{si }a\in S_v,\\
+0, & \text{en otro caso}.
+\end{cases}
+\]
+
+\subsection{Parámetros}
+
+\begin{itemize}
+  \item $n=|B|$: número de nodos candidatos.
+  \item $m=|A^\star|$: número de aristas objetivo.
+  \item $k$: máximo de nodos seleccionables.
+  \item $w_a>0$: peso de la arista $a$.
+  \item $\sigma_v>0$: importancia del nodo $v$.
+  \item $e_v\in\{0,1\}$: elegibilidad del nodo; vale $0$ si el usuario excluye
+  el nodo, el medio, el término o el tipo de fuente.
+  \item $q_{vh}\in\{0,1\}$: pertenencia del nodo $v$ al tipo $h$.
+  \item $L_h,U_h$: mínimos y máximos opcionales por tipo de nodo.
+  \item $\eta\in[0,1]$: relevancia mínima ponderada opcional.
+\end{itemize}
+
+Sean:
+\[
+W=\sum_{a\in A^\star}w_a,\qquad
+S=\sum_{v\in B}\sigma_v.
+\]
+
+\subsection{Restricciones}
+
+Las restricciones binarias son:
+\[
+x_v\in\{0,1\}\quad \forall v\in B,\qquad
+r_a\in\{0,1\}\quad \forall a\in A^\star.
+\]
+
+La remoción lógica de aristas se impone con:
+\[
+r_a \geq b_{av}x_v
+\quad \forall a\in A^\star,\ \forall v\in B,
+\]
+\[
+r_a \leq \sum_{v\in B} b_{av}x_v
+\quad \forall a\in A^\star.
+\]
+Así, una arista se cuenta como removida si toca al menos un nodo seleccionado:
+\[
+A_R(C)=\{a=(i,j)\in A^\star:i\in C \lor j\in C\}.
+\]
+
+El presupuesto de complejidad interpretativa es:
+\[
+\sum_{v\in B}x_v \leq k.
+\]
+
+La exclusión manual y metodológica se modela como:
+\[
+x_v\leq e_v\quad \forall v\in B.
+\]
+
+Cuando se requiere controlar la composición del cubridor por tipo de nodo:
+\[
+L_h \leq \sum_{v\in B}q_{vh}x_v \leq U_h
+\quad \forall h\in{\mathcal T}.
+\]
+Por ejemplo, puede limitarse el número de documentos para evitar soluciones
+triviales y exigir presencia de actores, etapas o conceptos.
+
+\subsection{Objetivos}
+
+El modelo compara soluciones mediante tres objetivos normalizados:
+\[
+f_1(x)=\frac{\sum_{v\in B}x_v}{n}
+\quad \text{minimizar proporción de nodos seleccionados},
+\]
+\[
+f_2(x)=\frac{\sum_{v\in B}\sigma_v x_v}{S}
+\quad \text{maximizar proporción de importancia nodal retenida},
+\]
+\[
+f_3(r)=\frac{\sum_{a\in A^\star}w_a r_a}{W}
+\quad \text{minimizar proporción de peso de aristas removidas}.
+\]
+
+El problema multiobjetivo queda:
+\[
+\min f_1(x),\qquad \max f_2(x),\qquad \min f_3(r),
+\]
+sujeto a las restricciones anteriores. Para trabajar en un espacio de
+maximización común se usa:
+\[
+g(x,r)=\left(1-f_1(x),\ f_2(x),\ 1-f_3(r)\right)\in[0,1]^3.
+\]
+
+\subsection{Dominancia de Pareto e hipervolumen}
+
+Una solución $(x^1,r^1)$ domina a $(x^2,r^2)$ si:
+\[
+g_i(x^1,r^1)\geq g_i(x^2,r^2)\quad \forall i
+\]
+y existe al menos un objetivo $j$ tal que:
+\[
+g_j(x^1,r^1)>g_j(x^2,r^2).
+\]
+El frente de Pareto $P$ contiene las soluciones factibles no dominadas.
+
+Para comparar métodos se maximiza el hipervolumen:
+\[
+HV(P)=\lambda_3\left(\bigcup_{(x,r)\in P}
+[r_1,g_1(x,r)]\times[r_2,g_2(x,r)]\times[r_3,g_3(x,r)]\right),
+\]
+donde $r=(0,0,0)$ es el punto de referencia y $\lambda_3$ es la medida de
+volumen en tres dimensiones. Un mayor hipervolumen indica un frente que combina
+mejor parsimonia, importancia nodal y bajo daño estructural por remoción de
+aristas.
+
+\subsection{Función escalar auxiliar}
+
+Los algoritmos heurísticos requieren ordenar candidatos durante la exploración.
+Para ello se usa una función auxiliar:
+\[
+\Phi(x,r)=
+\alpha f_2(x)
+-\beta f_3(r)
+-\lambda f_1(x)
+-\sum_h \pi_h(x),
+\]
+donde $\alpha,\beta,\lambda\geq0$ y $\pi_h(x)$ penaliza violaciones o
+desbalances respecto a la composición deseada por tipo de nodo. Esta función no
+reemplaza el modelo multiobjetivo: sólo guía exploraciones auxiliares y barridos
+para generar soluciones candidatas cuyo desempeño final se evalúa por Pareto e
+hipervolumen.
+
+\section{Métodos de solución}
+
+El sistema implementa cuatro métodos locales. Para que la comparación sea
+válida, todos se ejecutan sobre la misma instancia \((G,B,A^\star,k)\), con las
+mismas restricciones, el mismo criterio de factibilidad, el mismo presupuesto
+\(E\) de evaluaciones de función objetivo y las mismas métricas de calidad de
+frente. Sólo cambia la estrategia de búsqueda:
+
+\begin{enumerate}
+  \item \textbf{Barrido glotón por suma ponderada}: recorre vectores de peso
+  sobre \(u_1,u_2,u_3\) y construye soluciones incrementales.
+  \item \textbf{MOEA}: mantiene una población de subconjuntos, cruza, muta y
+  conserva un archivo de soluciones no dominadas.
+  \item \textbf{MOSA}: usa recocido simulado multiobjetivo; acepta soluciones por
+  dominancia y temperatura cuando la comparación no es concluyente.
+  \item \textbf{MMC-MO}: adaptación discreta multiobjetivo del método de
+  composición musical de Mora-Gutiérrez et al.; cada compositor conserva un
+  arreglo de nodos y modifica su arreglo usando memoria guía LP-Pareto.
+\end{enumerate}
+
+\section{Adaptación del MMC}
+
+En el MMC original, una sociedad de compositores produce arreglos musicales. En
+este problema, cada arreglo es un subconjunto de nodos narrativos:
+\[
+A_c=\{v_1,\ldots,v_m\},\quad m\leq k.
+\]
+La calidad del arreglo se evalúa mediante el vector multiobjetivo y su aporte al
+frente de Pareto. El genio $G^*$ es una solución guía seleccionada entre las
+mejores soluciones no dominadas. En cada iteración se aplican tres operadores:
+
+\begin{itemize}
+  \item innovación guiada por genio: insertar nodos de $G^*$;
+  \item cambio: agregar, eliminar o sustituir nodos;
+  \item intercambio social: recombinar el arreglo de un compositor con otro.
+\end{itemize}
+
+La solución nueva reemplaza a la anterior usando el mismo criterio común de
+dominancia con factibilidad:
+entre dos soluciones factibles se aplica Pareto; entre una factible y una
+infactible se conserva la factible; entre dos infactibles se prefiere la de
+menor violación total de restricciones. El desempeño global de todos los métodos
+se reporta con las mismas métricas:
+\begin{itemize}
+  \item hipervolumen normalizado;
+  \item número de puntos globalmente no dominados;
+  \item distancia generacional inversa (IGD) contra el frente global combinado;
+  \item spacing, como uniformidad de separación local entre puntos;
+  \item dispersión o extensión del frente en el espacio \((u_1,u_2,u_3)\).
+\end{itemize}
+
+\subsection{Relajaciones PL y guía adaptativa del MMC-MO}
+
+Para evitar una inicialización arbitraria, antes de iniciar la sociedad de
+compositores se resuelven una sola vez, por instancia del problema, las
+relajaciones lineales monoobjetivo asociadas a:
+\[
+u_1=1-f_1,\qquad u_2=f_2,\qquad u_3=1-f_3,
+\]
+y un punto balanceado. En la relajación se permite:
+\[
+0\leq x_v\leq 1,\qquad 0\leq r_a\leq 1.
+\]
+Las soluciones fraccionales se redondean seleccionando los nodos de mayor valor
+\(x_v\), respetando el presupuesto \(k\). Estas soluciones no son el resultado
+final del MMC-MO; son una \textbf{guía inicial} o memoria de referencia:
+\[
+M_0=\{C^{LP}_{u_1},C^{LP}_{u_2},C^{LP}_{u_3},C^{LP}_{bal}\}.
+\]
+
+Durante la composición, el MMC-MO no vuelve a resolver los PL. La memoria guía
+se actualiza con soluciones no dominadas encontradas por los compositores:
+\[
+M_{t+1}=\operatorname{ND}(M_t\cup P_t),
+\]
+donde \(P_t\) es el conjunto de soluciones evaluadas en la iteración \(t\) y
+\(\operatorname{ND}\) conserva soluciones factibles no dominadas bajo el criterio
+de Pareto con manejo de infactibilidad. Esta estrategia hace que la guía inicial
+derivada de PL oriente la búsqueda, pero que el método conserve su carácter
+heurístico multiobjetivo.
+
+\section{Salidas}
+
+El sistema exporta:
+
+\begin{itemize}
+  \item eventos narrativos por documento;
+  \item nodos de la red narrativa;
+  \item aristas ponderadas;
+  \item solución del cubridor nodal;
+  \item frente de Pareto;
+  \item hipervolumen;
+  \item superficie empírica \(u_1\times u_3\to u_2\) para visualizar el frente
+  tridimensional sin confundirlo con una proyección plana;
+  \item métricas de cobertura, peso nodal, costo de aristas y valor objetivo de referencia.
+\end{itemize}
+
+\section{Limitaciones metodológicas}
+
+El sistema depende de la calidad de los índices abiertos y de la posibilidad de
+descargar texto. Crossref, OpenAlex, Google News RSS, GDELT y Reddit no
+representan universos completos; representan mecanismos de muestreo auditables.
+La extracción completa se condiciona por permisos de fuente: antes de descargar
+HTML se consulta \texttt{robots.txt}; si la fuente es paywall, parcial o no
+permite descarga, el registro se conserva sólo como metadato o señal
+\texttt{ok\_partial}. La limpieza automática reduce ruido, pero no sustituye la
+revisión manual de una muestra. Por ello, las conclusiones publicables deben
+reportar consulta, variantes, años, región, fuentes activas, exclusiones, tasa
+de errores de descarga, proporción de \texttt{ok}/\texttt{ok\_partial} y criterios
+de validación humana.
+
+\section{Reproducibilidad}
+
+Todo el análisis corre localmente. Para ejecutar el solver:
+
+\begin{verbatim}
+python3 scripts/run_cover_solver.py \
+  --input news_output \
+  --method mmc \
+  --max-nodes 12 \
+  --edge-cost-weight 1.0
+\end{verbatim}
+
+\end{document}

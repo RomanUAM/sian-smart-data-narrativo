@@ -1,0 +1,5 @@
+streamlit>=1.30
+scipy>=1.11
+networkx>=3.2
+certifi>=2024.2.2
+python-docx>=1.1
