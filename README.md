@@ -25,6 +25,9 @@ La ejecución local paso a paso está en
 La revisión crítica por agentes está resumida en
 [`AGENT_REVIEW_SUMMARY.md`](AGENT_REVIEW_SUMMARY.md).
 
+Los agentes locales están en `.agents/` y deben leerse como perfiles críticos de
+revisión, no como módulos autónomos que ejecuten decisiones dentro de la app.
+
 Usa varios índices públicos según la capa seleccionada: GDELT, Google News RSS,
 blogs/comunidades abiertas, Reddit/RSS público como fuente tardía, OpenAlex,
 Crossref y, cuando existe URL abierta, PDFs. GDELT es uno de los índices

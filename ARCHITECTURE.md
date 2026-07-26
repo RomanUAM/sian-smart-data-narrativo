@@ -82,6 +82,12 @@ Los archivos en `.agents/` no son procesos autónomos. Son memoria crítica loca
   claridad para públicos no computacionales.
 - `sinergia_narrativas_humanidades.md`: define narrativa como estructura
   situada de sentido y obliga a separar capas discursivas.
+- `legal_ethics_agent.md`: revisa fuentes públicas, límites OSINT,
+  trazabilidad técnica y riesgos de publicación.
+- `computational_architecture_agent.md`: revisa ejecución local,
+  reproducibilidad, manifiestos, planes y acoplamiento de módulos.
+- `logical_consistency_agent.md`: revisa coherencia formal entre modelo,
+  objetivos, restricciones, métricas y visualizaciones.
 
 Estos agentes se aplican como criterios de revisión documental y de diseño. Si
 una regla del usuario cambia la validez del sistema, debe actualizarse ahí.

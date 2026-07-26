@@ -6,6 +6,14 @@ Esta revisión resume dos dictámenes: uno computacional/arquitectónico y otro
 metodológico-humanístico. Los agentes no son módulos autónomos de ejecución; son
 perfiles críticos usados para revisar coherencia, límites y publicación.
 
+## Perfiles formalizados
+
+- `roman_mora_cognitive_agent.md`: criterio cognitivo, editorial y metodológico.
+- `sinergia_narrativas_humanidades.md`: criterio humanístico y narrativo.
+- `legal_ethics_agent.md`: criterio legal/ético OSINT.
+- `computational_architecture_agent.md`: criterio computacional y reproducible.
+- `logical_consistency_agent.md`: criterio lógico-formal y matemático.
+
 ## Dictamen general
 
 SIAN es coherente como prototipo local de humanidades computacionales para
@@ -51,6 +59,8 @@ Formulación recomendada:
 - La corrida secuencial guarda `query_plan.json`.
 - Se añadió `scripts/run_query_plan.py` para repetir un plan secuencial sin
   depender de Streamlit.
+- Se formalizaron agentes legal, computacional y lógico como perfiles locales
+  en `.agents/`.
 - La documentación ya no presenta el manifiesto como pendiente total.
 
 ## Pendientes antes de artículo fuerte
