@@ -54,7 +54,13 @@ from narrative_analysis import (
     top_terms,
     weighted_sum_greedy_sweep_node_cover,
 )
-from news_spider import build_query, classify_source_type, crawl_news, evidence_rank_for_source_type
+from news_spider import (
+    build_query,
+    classify_source_type,
+    crawl_news,
+    document_dedup_key_from_values,
+    evidence_rank_for_source_type,
+)
 from source_profiles import (
     domains_from_seed_file as catalog_domains_from_seed_file,
     profile_domains,
@@ -84,6 +90,43 @@ def json_default(value):
 def stable_json_hash(value) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, default=json_default)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def row_document_dedup_key(row: dict) -> str:
+    return document_dedup_key_from_values(
+        url=str(row.get("url") or ""),
+        title=str(row.get("title") or ""),
+        year=row.get("year") or "",
+        medium=str(row.get("medium") or ""),
+        pdf_url=str(row.get("pdf_url") or ""),
+    ) or str(row.get("url") or row.get("title") or stable_json_hash(row))
+
+
+def deduplicate_rows_for_analysis(rows: list[dict]) -> tuple[list[dict], list[dict]]:
+    kept: dict[str, dict] = {}
+    duplicates: list[dict] = []
+    for row in rows:
+        key = row_document_dedup_key(row)
+        if key not in kept:
+            copy = dict(row)
+            copy["dedup_key"] = key
+            kept[key] = copy
+            continue
+        duplicate = dict(row)
+        duplicate["dedup_key"] = key
+        duplicate["duplicate_of"] = kept[key].get("url") or kept[key].get("title") or key
+        duplicates.append(duplicate)
+        prior = kept[key]
+        prior["variant_rubric"] = ", ".join(
+            merge_unique([str(prior.get("variant_rubric") or ""), str(row.get("variant_rubric") or "")])
+        )
+        prior["variant_term"] = ", ".join(
+            merge_unique([str(prior.get("variant_term") or ""), str(row.get("variant_term") or "")])
+        )
+        prior["source_collection"] = ", ".join(
+            merge_unique([str(prior.get("source_collection") or ""), str(row.get("source_collection") or "")])
+        )
+    return list(kept.values()), duplicates
 
 
 def save_run_manifest(config: dict) -> None:
@@ -288,7 +331,7 @@ def start_worker(config: dict) -> None:
                     )
                 merged: dict[str, dict] = {}
                 for row in all_rows:
-                    key = str(row.get("url") or row.get("title") or "")
+                    key = row_document_dedup_key(row)
                     if not key:
                         continue
                     if key not in merged:
@@ -442,7 +485,7 @@ def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dic
     for source_key in source_keys:
         rows = load_records_from_path(source_output_dir(base_output_dir, source_key))
         for row in rows:
-            key = str(row.get("url") or row.get("title") or "")
+            key = row_document_dedup_key(row)
             if not key:
                 continue
             if key not in merged:
@@ -1459,6 +1502,30 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
+    raw_rows = rows
+    rows, duplicate_rows = deduplicate_rows_for_analysis(raw_rows)
+    if duplicate_rows:
+        st.warning(
+            f"Se detectaron {len(duplicate_rows)} registros duplicados por DOI/URL/título-año-medio. "
+            "No se borraron del archivo original, pero se excluyen del análisis para no duplicar documentos."
+        )
+        with st.expander("Duplicados excluidos del análisis"):
+            st.dataframe(
+                [
+                    {
+                        "year": row.get("year"),
+                        "source_type": row_source_type(row),
+                        "medium": row.get("medium"),
+                        "title": row.get("title"),
+                        "url": row.get("url"),
+                        "duplicate_of": row.get("duplicate_of"),
+                        "dedup_key": row.get("dedup_key"),
+                    }
+                    for row in duplicate_rows
+                ],
+                use_container_width=True,
+            )
+
     usable = enrich_records_for_analysis([row for row in rows if has_usable_text(row)])
     if not usable:
         st.warning(
@@ -1598,12 +1665,13 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "Si aquí quedan pocos documentos, no significa que existan pocos documentos en el mundo; "
             "significa que la combinación de búsqueda, descarga, limpieza, exclusiones y relevancia tópica está filtrando el corpus."
         )
-        a1, a2, a3, a4 = st.columns(4)
-        a1.metric("Registros cargados", len(rows))
-        a2.metric("Usables antes de filtros", len(usable))
-        a3.metric("Analizados después de filtros", len(selected_records))
-        a4.metric("Excluidos por filtros", len(manually_removed_records))
-        st.dataframe(corpus_audit_rows(rows), use_container_width=True)
+        a1, a2, a3, a4, a5 = st.columns(5)
+        a1.metric("Registros cargados", len(raw_rows))
+        a2.metric("Duplicados excluidos", len(duplicate_rows))
+        a3.metric("Registros deduplicados", len(rows))
+        a4.metric("Usables antes de filtros", len(usable))
+        a5.metric("Analizados después de filtros", len(selected_records))
+        st.dataframe(corpus_audit_rows(raw_rows), use_container_width=True)
         if year_options and max(year_options) < 2026:
             st.error(
                 f"Este corpus sólo llega hasta {max(year_options)}. Para analizar hasta 2026 debes correr una nueva recolección con año final 2026."
@@ -3972,7 +4040,12 @@ def corpus_audit_rows(rows: list[dict]) -> list[dict]:
     type_counts = Counter(row_source_type(row) for row in rows)
     api_counts = Counter(row.get("source_api", "unknown") for row in rows)
     year_counts = Counter(row.get("year", "unknown") for row in rows)
+    dedup_counts = Counter(row_document_dedup_key(row) for row in rows)
+    duplicate_groups = sum(1 for key, value in dedup_counts.items() if key and value > 1)
+    duplicate_extra_records = sum(value - 1 for key, value in dedup_counts.items() if key and value > 1)
     audit = [{"dimension": "total_records", "value": "all", "records": len(rows)}]
+    audit.append({"dimension": "deduplication", "value": "duplicate_groups", "records": duplicate_groups})
+    audit.append({"dimension": "deduplication", "value": "duplicate_extra_records", "records": duplicate_extra_records})
     audit.extend({"dimension": "status", "value": key, "records": value} for key, value in status_counts.most_common())
     audit.extend({"dimension": "source_type", "value": key, "records": value} for key, value in type_counts.most_common())
     audit.extend({"dimension": "source_api", "value": key, "records": value} for key, value in api_counts.most_common())

@@ -1697,6 +1697,72 @@ def stable_id(url: str) -> str:
     return hashlib.sha1(url.encode("utf-8")).hexdigest()[:16]
 
 
+def normalize_dedup_text(value: str) -> str:
+    table = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
+    value = (value or "").lower().translate(table)
+    value = re.sub(r"^https?://", "", value)
+    value = re.sub(r"^www\.", "", value)
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return " ".join(value.split())
+
+
+def canonical_url_key(url: str) -> str:
+    url = (url or "").strip().lower()
+    url = re.sub(r"^https?://", "", url)
+    url = re.sub(r"^www\.", "", url)
+    url = url.split("#", 1)[0].split("?", 1)[0]
+    return url.rstrip("/")
+
+
+def canonical_doi_key(*values: str) -> str:
+    haystack = " ".join(value or "" for value in values)
+    match = re.search(r"10\.\d{4,9}/[^\s\"<>]+", haystack, flags=re.I)
+    if not match:
+        return ""
+    return match.group(0).lower().rstrip(".,;)")
+
+
+def document_dedup_key_from_values(
+    *,
+    url: str = "",
+    title: str = "",
+    year: int | str = "",
+    medium: str = "",
+    pdf_url: str = "",
+) -> str:
+    doi = canonical_doi_key(url, pdf_url)
+    if doi:
+        return f"doi:{doi}"
+    normalized_url = canonical_url_key(url)
+    normalized_title = normalize_dedup_text(title)
+    normalized_medium = normalize_dedup_text(medium)
+    if normalized_title and year and normalized_medium:
+        return f"title_year_medium:{year}:{normalized_medium}:{normalized_title[:180]}"
+    if normalized_url:
+        return f"url:{normalized_url}"
+    if normalized_title and year:
+        return f"title_year:{year}:{normalized_title[:180]}"
+    return ""
+
+
+def document_dedup_key(record: NewsRecord) -> str:
+    return document_dedup_key_from_values(
+        url=record.url,
+        title=record.title,
+        year=record.year,
+        medium=record.medium,
+        pdf_url=record.pdf_url,
+    )
+
+
+def article_dedup_key(article: dict, fallback_year: int | str = "") -> str:
+    url = str(article.get("url") or article.get("link") or article.get("id") or "")
+    title = str(article.get("title") or article.get("name") or article.get("display_name") or "")
+    medium = str(article.get("sourceCommonName") or article.get("domain") or article.get("medium") or "")
+    year = article_year(article, int(fallback_year or 0)) if str(fallback_year).isdigit() else fallback_year
+    return document_dedup_key_from_values(url=url, title=title, year=year, medium=medium)
+
+
 def should_stop(stop_requested) -> bool:
     return bool(stop_requested and stop_requested())
 
@@ -1783,7 +1849,7 @@ def crawl_news(
             f"Seed URLs loaded: {len(seed_url_articles)} from {seed_url_file}"
             f"{' · source_types=' + ','.join(seed_types) if seed_types else ''}"
         )
-    seen_urls: set[str] = set()
+    seen_document_keys: set[str] = set()
     records: list[NewsRecord] = []
     accepted_by_year_type: dict[tuple[int, str], int] = {}
 
@@ -2080,9 +2146,11 @@ def crawl_news(
                     progress("Stopped by user before next article.")
                 break
             url = str(article.get("url", "")).strip()
-            if not url or url in seen_urls:
+            dedup_key = article_dedup_key(article, start.year)
+            if not url or (dedup_key and dedup_key in seen_document_keys):
                 continue
-            seen_urls.add(url)
+            if dedup_key:
+                seen_document_keys.add(dedup_key)
             published = str(article.get("seendate", "") or article.get("publishedDate", ""))
             year = article_year(article, start.year)
             medium = infer_medium(article, url)
@@ -2335,9 +2403,11 @@ def crawl_news(
                     year=year,
                     min_text_chars=min_text_chars,
                 )
-                if not record.url or record.url in seen_urls:
+                dedup_key = document_dedup_key(record)
+                if not record.url or (dedup_key and dedup_key in seen_document_keys):
                     continue
-                seen_urls.add(record.url)
+                if dedup_key:
+                    seen_document_keys.add(dedup_key)
                 excluded, reason = contains_excluded_content(
                     record.url,
                     record.medium,
@@ -2437,9 +2507,11 @@ def crawl_news(
                     year=year,
                     min_text_chars=min_text_chars,
                 )
-                if not record.url or record.url in seen_urls:
+                dedup_key = document_dedup_key(record)
+                if not record.url or (dedup_key and dedup_key in seen_document_keys):
                     continue
-                seen_urls.add(record.url)
+                if dedup_key:
+                    seen_document_keys.add(dedup_key)
                 excluded, reason = contains_excluded_content(
                     record.url,
                     record.medium,
@@ -2545,10 +2617,17 @@ def save_outputs(output_dir: Path, records: list[NewsRecord], scan_existing: boo
             except Exception:
                 continue
             if isinstance(item, dict):
-                data_by_url[item.get("url") or str(file_path)] = item
+                key = document_dedup_key_from_values(
+                    url=str(item.get("url") or ""),
+                    title=str(item.get("title") or ""),
+                    year=item.get("year") or "",
+                    medium=str(item.get("medium") or ""),
+                    pdf_url=str(item.get("pdf_url") or ""),
+                ) or str(file_path)
+                data_by_url[key] = item
     for record in records:
         item = asdict(record)
-        data_by_url[item.get("url") or stable_id(str(item))] = item
+        data_by_url[document_dedup_key(record) or stable_id(str(item))] = item
     data = list(data_by_url.values())
     data.sort(key=lambda item: (item.get("year") or 0, item.get("medium") or "", item.get("title") or ""))
     safe_write_text_atomic(output_dir / "news_records.json", json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
