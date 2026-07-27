@@ -5224,19 +5224,21 @@ with st.sidebar:
         ),
         disabled=st.session_state.spider_running,
     )
+    default_source_mode_labels = [
+        "Noticias web / GDELT",
+        "Noticias web / Google News RSS",
+        "Artículos abiertos / OpenAlex OA",
+        "Índice DOI / Crossref (metadatos + links)",
+        "Foros y Reddit públicos / GDELT por dominio",
+        "Gobierno e instituciones públicas / GDELT",
+    ]
     source_mode_labels = st.multiselect(
         "Motores y tipos de búsqueda",
         options=list(SOURCE_MODE_LABELS),
-        default=[
-            "Noticias web / GDELT",
-            "Noticias web / Google News RSS",
-            "Artículos científicos abiertos / OpenAlex",
-            "Artículos científicos / Crossref",
-            "Foros y Reddit públicos / GDELT por dominio",
-            "Gobierno e instituciones públicas / GDELT",
-        ],
+        default=[label for label in default_source_mode_labels if label in SOURCE_MODE_LABELS],
         help=(
-            "GDELT y Google News RSS encuentran noticias y páginas públicas; OpenAlex y Crossref recuperan metadatos/resúmenes de artículos; "
+            "GDELT y Google News RSS encuentran noticias y páginas públicas; OpenAlex OA prioriza artículos abiertos; "
+            "Crossref es índice DOI con metadatos y posibles links, no garantía de texto libre; "
             "foros se buscan como dominios públicos; Reddit RSS queda como opción manual exploratoria porque suele bloquear con 429 en corridas largas; "
             "gobierno/instituciones se separa como capa institucional. Instagram no se raspa automáticamente: requiere API/exportación/manual por robustez metodológica."
         ),
