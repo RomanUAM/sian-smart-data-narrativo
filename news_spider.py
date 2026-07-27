@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.robotparser
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections import Counter
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
@@ -111,6 +112,15 @@ class NewsRecord:
     pdf_file: str = ""
     pdf_status: str = ""
     source_weight_factor: float = 1.0
+    pdf_text_clean: str = ""
+    pdf_text_length: int = 0
+    pdf_page_count: int = 0
+    analysis_tokens: list[str] | None = None
+    analysis_token_count: int = 0
+    top_unigrams: list[dict] | None = None
+    top_bigrams: list[dict] | None = None
+    top_trigrams: list[dict] | None = None
+    processing_status: str = ""
 
 
 MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
@@ -416,6 +426,96 @@ def clean_partial_metadata_text(value: str) -> dict:
         "paragraph_count": 1 if text_clean else 0,
         "cleaning_notes": ["partial_metadata_text"],
     }
+
+
+PDF_STOPWORDS = {
+    "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have", "not",
+    "los", "las", "del", "que", "por", "con", "para", "una", "uno", "como", "mas", "sus", "sin", "sobre",
+    "entre", "tambien", "esta", "este", "estos", "estas", "desde", "donde", "cuando", "porque", "pero",
+    "dos", "tres", "ser", "son", "fue", "han", "hay", "the", "doi", "http", "https", "www",
+    "que", "com", "uma", "das", "dos", "por", "para", "com", "como", "mais", "sao", "foi", "entre",
+    "citar", "articulo", "articulos", "artigo", "numero", "completo", "informacion", "informa", "pagina",
+    "site", "revista", "redalyc", "sistema", "org", "issn", "correo", "email", "vol", "num", "pp",
+    "universidad", "universidade", "autonoma", "autónoma", "journal", "abstract", "resumen", "palabras",
+    "clave", "keywords", "copyright", "creative", "commons", "licencia", "licence",
+    "nos", "nas", "pelos", "pela", "elas", "eles", "seus", "suas",
+}
+
+
+def tokenize_for_json(text: str) -> list[str]:
+    normalized = strip_for_compare(text)
+    tokens = re.findall(r"\b[a-z][a-z0-9_-]{2,}\b", normalized)
+    return [token for token in tokens if token not in PDF_STOPWORDS and not token.isnumeric()]
+
+
+def top_ngrams_from_tokens(tokens: list[str], n: int, top_n: int = 50) -> list[dict]:
+    if n <= 1:
+        counts = Counter(tokens)
+    else:
+        counts = Counter(" ".join(tokens[i:i + n]) for i in range(0, max(0, len(tokens) - n + 1)))
+    return [{"term": term, "count": count} for term, count in counts.most_common(top_n)]
+
+
+def extract_pdf_text(pdf_path: str | Path, max_pages: int = 80) -> tuple[str, int, str]:
+    """Extract local PDF text using pypdf when available.
+
+    This is intentionally local and conservative: if the PDF is scanned or encrypted,
+    the record keeps metadata and reports the extraction status instead of pretending
+    that full text exists.
+    """
+    try:
+        from pypdf import PdfReader  # type: ignore
+    except Exception as exc:  # noqa: BLE001
+        return "", 0, f"pdf_text_error:pypdf_unavailable:{type(exc).__name__}"
+    try:
+        reader = PdfReader(str(pdf_path))
+        page_count = len(reader.pages)
+        parts: list[str] = []
+        for page in reader.pages[:max_pages]:
+            try:
+                parts.append(page.extract_text() or "")
+            except Exception:
+                parts.append("")
+        text = clean_text("\n".join(parts))
+        if not text:
+            return "", page_count, "pdf_text_empty_or_scanned"
+        return text, page_count, "pdf_text_extracted"
+    except Exception as exc:  # noqa: BLE001
+        return "", 0, f"pdf_text_error:{type(exc).__name__}"
+
+
+def enrich_record_with_pdf_text(record: NewsRecord, max_tokens: int = 12000) -> NewsRecord:
+    if not record.pdf_file:
+        if not record.processing_status:
+            record.processing_status = "no_pdf_file_for_text_extraction"
+        return record
+    pdf_path = Path(record.pdf_file)
+    if not pdf_path.exists():
+        record.processing_status = "pdf_file_missing_for_text_extraction"
+        return record
+    pdf_text, page_count, extraction_status = extract_pdf_text(pdf_path)
+    record.pdf_text_clean = pdf_text
+    record.pdf_text_length = len(pdf_text)
+    record.pdf_page_count = page_count
+    if pdf_text and len(pdf_text) > len(record.text_clean or ""):
+        record.text_raw_visible = pdf_text
+        record.text_clean = pdf_text
+        record.text_normalized = normalize_for_analysis(pdf_text)
+        record.text_length = len(record.text_clean)
+        record.word_count = len(re.findall(r"\b\w+\b", record.text_normalized))
+        record.paragraph_count = len([block for block in re.split(r"\n{2,}", record.text_clean) if block.strip()]) or 1
+        record.cleaning_notes = unique_sequence([*record.cleaning_notes, "pdf_full_text_used_for_analysis"])
+        if record.status in {"ok_partial", "too_short", "fetch_error", "error"}:
+            record.status = "ok"
+            record.error = ""
+    tokens = tokenize_for_json(record.text_normalized or record.text_clean or pdf_text)
+    record.analysis_tokens = tokens[:max_tokens]
+    record.analysis_token_count = len(tokens)
+    record.top_unigrams = top_ngrams_from_tokens(tokens, 1)
+    record.top_bigrams = top_ngrams_from_tokens(tokens, 2)
+    record.top_trigrams = top_ngrams_from_tokens(tokens, 3)
+    record.processing_status = extraction_status
+    return record
 
 
 def request_json(url: str, timeout: int = 30) -> dict:
@@ -2463,6 +2563,7 @@ def crawl_news(
                 pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url), timeout=10)
                 record.pdf_file = pdf_file
                 record.pdf_status = pdf_status
+                record = enrich_record_with_pdf_text(record)
             records.append(record)
             if record_is_usable_for_analysis(record):
                 mark_accepted_record(record.year, record.source_type)
@@ -2596,6 +2697,7 @@ def crawl_news(
                     pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
+                    record = enrich_record_with_pdf_text(record)
                 records.append(record)
                 if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
@@ -2707,6 +2809,7 @@ def crawl_news(
                     pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
+                    record = enrich_record_with_pdf_text(record)
                 records.append(record)
                 if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
@@ -2817,6 +2920,7 @@ def crawl_news(
                     pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
+                    record = enrich_record_with_pdf_text(record)
                 records.append(record)
                 if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
