@@ -205,6 +205,12 @@ permite auditar qué se intentó aunque la recolección se detenga. Para una
 publicación estrictamente reproducible conviene añadir después un hash final del
 corpus resultante y una auditoría manual de una muestra por fuente.
 
+En artículos científicos el sistema no equipara “indexado” con “libre”. OpenAlex
+se consulta en modo OA; Crossref se usa como índice DOI y sólo se acepta por
+defecto cuando hay enlace abierto/PDF. Google Scholar no se raspa. Dominios como
+ScienceDirect o Springer sólo son señales bibliográficas si aparecen por índices
+o presets; no autorizan descarga ni almacenamiento de texto cerrado.
+
 ## Limpieza y normalización
 
 Antes del análisis:

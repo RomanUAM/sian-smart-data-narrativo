@@ -206,6 +206,14 @@ después se ejecutan las capas web mensuales. Esto evita que la capa académica
 aparezca en cero durante horas sólo porque quedó detrás de 84 meses de
 GDELT/RSS/foros.
 
+La capa académica distingue **acceso abierto** de **rastreo bibliográfico**:
+OpenAlex se consulta primero con `is_oa:true`; Crossref se usa como índice DOI
+con metadatos y posibles enlaces de texto/PDF. Por defecto, el modo de artículos
+es estricto y excluye registros sin PDF o enlace abierto. Google Scholar no se
+raspa. ScienceDirect, Springer, Wiley, ACM o IEEE pueden aparecer como
+editoriales o dominios de rastreo bibliográfico, pero no se tratan como texto
+libre salvo que el índice entregue un enlace abierto verificable.
+
 - distribución del corpus por año, fuente, tipo de fuente, evidencia, idioma y localización;
 - estructura narrativa por documento: evento inicial, conflicto, punto de cambio, resolución y consecuencias;
 - actores detectados, validación humana de actores y contexto/situación del documento;

@@ -307,6 +307,7 @@ def start_worker(config: dict) -> None:
                         accept_source_types=step_config.get("accept_source_types", []),
                         seed_url_file=step_config.get("seed_url_file") or None,
                         download_pdfs=step_config.get("download_pdfs", False),
+                        strict_open_access_articles=step_config.get("strict_open_access_articles", True),
                         search_delay_seconds=step_config["search_delay_seconds"],
                         delay_seconds=step_config["delay_seconds"],
                         min_text_chars=step_config["min_text_chars"],
@@ -395,6 +396,7 @@ def start_worker(config: dict) -> None:
                     accept_source_types=config.get("accept_source_types", []),
                     seed_url_file=config.get("seed_url_file") or None,
                     download_pdfs=config.get("download_pdfs", False),
+                    strict_open_access_articles=config.get("strict_open_access_articles", True),
                     search_delay_seconds=config["search_delay_seconds"],
                     delay_seconds=config["delay_seconds"],
                     min_text_chars=config["min_text_chars"],
@@ -3569,9 +3571,26 @@ GEOGRAPHIC_PRESETS = {
 
 SOURCE_PRESETS = {
     "Sin limitar fuentes": [],
-    "Artículos científicos / académicos": [
+    "Artículos abiertos / repositorios académicos": [
         "pubmed.ncbi.nlm.nih.gov",
         "pmc.ncbi.nlm.nih.gov",
+        "arxiv.org",
+        "scielo.org",
+        "redalyc.org",
+        "dialnet.unirioja.es",
+        "doaj.org",
+        "zenodo.org",
+        "osf.io",
+        "hal.science",
+        "repositorio.unam.mx",
+        "zaloamati.azc.uam.mx",
+        "ri.ibero.mx",
+        "frontiersin.org",
+        "mdpi.com",
+        "plos.org",
+        "biomedcentral.com",
+    ],
+    "Editoriales académicas cerradas / sólo rastreo bibliográfico": [
         "sciencedirect.com",
         "dl.acm.org",
         "ieeexplore.ieee.org",
@@ -3582,14 +3601,7 @@ SOURCE_PRESETS = {
         "sagepub.com",
         "nature.com",
         "science.org",
-        "frontiersin.org",
-        "mdpi.com",
-        "arxiv.org",
         "doi.org",
-        "scielo.org",
-        "redalyc.org",
-        "plos.org",
-        "biomedcentral.com",
     ],
     "Reportes industriales / encuestas": [
         "survey.stackoverflow.co",
@@ -3696,8 +3708,8 @@ SOURCE_PRESETS = {
 SOURCE_MODE_LABELS = {
     "Noticias web / GDELT": "gdelt_news",
     "Noticias web / Google News RSS": "google_news_rss",
-    "Artículos científicos abiertos / OpenAlex": "openalex_oa",
-    "Artículos científicos / Crossref": "crossref",
+    "Artículos abiertos / OpenAlex OA": "openalex_oa",
+    "Índice DOI / Crossref (metadatos + links)": "crossref",
     "Foros y Reddit públicos / GDELT por dominio": "forums",
     "Reddit público / RSS de publicaciones": "reddit_rss",
     "Gobierno e instituciones públicas / GDELT": "institutional_gdelt",
@@ -5374,7 +5386,16 @@ with st.sidebar:
         max_value=3000,
         value=300,
         step=20,
-        help="Para artículos científicos con sólo título+abstract, 300 o menos evita descartar metadatos válidos.",
+        help="Para publicación narrativa conviene no contar metadatos muy cortos como texto completo.",
+        disabled=st.session_state.spider_running,
+    )
+    allow_metadata_only_articles = st.checkbox(
+        "Permitir artículos sólo con metadatos/abstract sin PDF abierto",
+        value=False,
+        help=(
+            "Apagado por defecto: la capa de artículos acepta sólo OpenAlex OA/Crossref con enlace PDF o texto abierto. "
+            "Actívalo sólo para revisión bibliográfica, no para corpus de texto completo."
+        ),
         disabled=st.session_state.spider_running,
     )
     output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
@@ -5582,6 +5603,7 @@ config = {
         "forums": forum_seed_url_file if use_forum_seed_urls and forum_seed_url_file else "",
     },
     "download_pdfs": False,
+    "strict_open_access_articles": not bool(allow_metadata_only_articles),
     "search_delay_seconds": float(search_delay),
     "delay_seconds": float(delay),
     "min_text_chars": int(min_chars),

@@ -1798,6 +1798,7 @@ def crawl_news(
     accept_source_types: list[str] | None = None,
     seed_url_file: str | Path | None = None,
     download_pdfs: bool = False,
+    strict_open_access_articles: bool = True,
     delay_seconds: float = 1.0,
     search_delay_seconds: float = 2.0,
     min_text_chars: int = 600,
@@ -2355,7 +2356,10 @@ def crawl_news(
 
     if "openalex_oa" in active_source_modes:
         if progress:
-            progress(f"OpenAlex OA queries: {', '.join(academic_queries)}")
+            progress(
+                f"OpenAlex OA queries: {', '.join(academic_queries)}"
+                + (" · strict_open_access_articles=true" if strict_open_access_articles else " · includes metadata fallback")
+            )
         for year in range(start_year, end_year + 1):
             if should_stop(stop_requested):
                 if progress:
@@ -2368,7 +2372,7 @@ def crawl_news(
                 for academic_query in academic_queries:
                     oa_items = search_openalex_year(academic_query, year, max_records_per_month, oa_only=True)
                     items.extend(oa_items)
-                    if len(oa_items) < max_records_per_month:
+                    if not strict_open_access_articles and len(oa_items) < max_records_per_month:
                         items.extend(
                             search_openalex_year(
                                 academic_query,
@@ -2408,6 +2412,10 @@ def crawl_news(
                     continue
                 if dedup_key:
                     seen_document_keys.add(dedup_key)
+                if strict_open_access_articles and not record.pdf_url:
+                    if progress:
+                        progress(f"excluded_closed_or_metadata_only: {year} · OpenAlex · no_pdf_url · {record.medium} · {record.title[:70]}")
+                    continue
                 excluded, reason = contains_excluded_content(
                     record.url,
                     record.medium,
@@ -2471,7 +2479,10 @@ def crawl_news(
 
     if "crossref" in active_source_modes:
         if progress:
-            progress(f"Crossref queries: {', '.join(academic_queries)}")
+            progress(
+                f"Crossref queries: {', '.join(academic_queries)}"
+                + (" · only records with PDF/full-text link are accepted" if strict_open_access_articles else " · metadata-only allowed")
+            )
         for year in range(start_year, end_year + 1):
             if should_stop(stop_requested):
                 if progress:
@@ -2512,6 +2523,10 @@ def crawl_news(
                     continue
                 if dedup_key:
                     seen_document_keys.add(dedup_key)
+                if strict_open_access_articles and not record.pdf_url:
+                    if progress:
+                        progress(f"excluded_closed_or_metadata_only: {year} · Crossref · no_pdf_url · {record.medium} · {record.title[:70]}")
+                    continue
                 excluded, reason = contains_excluded_content(
                     record.url,
                     record.medium,
@@ -2711,6 +2726,11 @@ def parse_args() -> argparse.Namespace:
             "Crossref PDFs remain metadata-only unless license verification is added."
         ),
     )
+    parser.add_argument(
+        "--allow-metadata-only-articles",
+        action="store_true",
+        help="Allow scientific metadata/abstract records without an open PDF/full-text link. Default is strict open-access article mode.",
+    )
     parser.add_argument("--delay", type=float, default=1.0)
     parser.add_argument("--search-delay", type=float, default=2.0)
     parser.add_argument("--min-text-chars", type=int, default=600)
@@ -2746,6 +2766,7 @@ def main() -> None:
         "accept_source_types": accept_source_types,
         "seed_url_file": args.seed_url_file or "",
         "download_pdfs": bool(args.download_pdfs),
+        "strict_open_access_articles": not bool(args.allow_metadata_only_articles),
         "delay_seconds": args.delay,
         "search_delay_seconds": args.search_delay,
         "min_text_chars": args.min_text_chars,
@@ -2772,6 +2793,7 @@ def main() -> None:
             accept_source_types=accept_source_types,
             seed_url_file=args.seed_url_file or None,
             download_pdfs=args.download_pdfs,
+            strict_open_access_articles=not bool(args.allow_metadata_only_articles),
             delay_seconds=args.delay,
             search_delay_seconds=args.search_delay,
             min_text_chars=args.min_text_chars,
