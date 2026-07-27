@@ -26,6 +26,7 @@ from narrative_analysis import (  # noqa: E402
     infer_domain_profile,
     idea_group_counts,
     idea_groups_for_records,
+    rows_to_csv,
 )
 from source_profiles import source_access_policy  # noqa: E402
 from structural_narrative import technical_traceability_rows  # noqa: E402
@@ -210,6 +211,19 @@ class CoreBehaviorTests(unittest.TestCase):
         text = manifest_path.read_text(encoding="utf-8")
         self.assertIn('"records_total": 1', text)
         self.assertIn('"records_usable": 1', text)
+
+    def test_rows_to_csv_accepts_heterogeneous_fields(self) -> None:
+        payload = rows_to_csv(
+            [
+                {"frame_id": "a", "current": "x"},
+                {"frame_id": "b", "current": "y", "previous_frame_id": "a"},
+            ]
+        ).decode("utf-8")
+        header = payload.splitlines()[0]
+        self.assertIn("frame_id", header)
+        self.assertIn("current", header)
+        self.assertIn("previous_frame_id", header)
+        self.assertIn("b,y,a", payload)
 
 
 if __name__ == "__main__":

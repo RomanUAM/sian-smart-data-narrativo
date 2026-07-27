@@ -3426,8 +3426,16 @@ def rows_to_csv(rows: list[dict]) -> bytes:
         return b""
     import io
 
+    fieldnames: list[str] = []
+    seen_fields: set[str] = set()
+    for row in rows:
+        for key in row.keys():
+            if key not in seen_fields:
+                seen_fields.add(key)
+                fieldnames.append(key)
+
     buffer = io.StringIO()
-    writer = csv.DictWriter(buffer, fieldnames=list(rows[0].keys()))
+    writer = csv.DictWriter(buffer, fieldnames=fieldnames, extrasaction="ignore")
     writer.writeheader()
     writer.writerows(rows)
     return buffer.getvalue().encode("utf-8")
