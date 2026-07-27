@@ -10,6 +10,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from news_spider import (  # noqa: E402
     NewsRecord,
+    academic_exclude_terms,
+    build_academic_query_plan,
     build_query,
     classify_source_type,
     month_periods,
@@ -66,6 +68,23 @@ class CoreBehaviorTests(unittest.TestCase):
         self.assertIn("-cigar", query)
         self.assertIn('-"colonoscopic tattooing"', query)
         self.assertIn("-domain:halfwheel.com", query)
+
+    def test_academic_query_plan_combines_topic_and_geography(self) -> None:
+        queries = build_academic_query_plan(
+            "tatuaje",
+            ["tatuajes", "arte corporal"],
+            ["Mexico", "México"],
+        )
+        self.assertIn("tatuaje Mexico", queries)
+        self.assertIn("tatuajes Mexico", queries)
+
+    def test_academic_exclusions_keep_biomedical_tattoo_terms(self) -> None:
+        filtered = academic_exclude_terms(["cigar", "HIV", "hepatitis", "keloid", "colonoscopic tattooing"])
+        self.assertIn("cigar", filtered)
+        self.assertIn("colonoscopic tattooing", filtered)
+        self.assertNotIn("HIV", filtered)
+        self.assertNotIn("hepatitis", filtered)
+        self.assertNotIn("keloid", filtered)
 
     def test_removal_impact_reports_preserved_and_removed_edges(self) -> None:
         graph = {

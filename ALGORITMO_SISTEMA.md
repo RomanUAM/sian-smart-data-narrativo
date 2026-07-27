@@ -145,6 +145,12 @@ mínimo y máximo (`news 19/min 50 · max 100`). La categoría
 `other` se conserva para auditoría, pero no debe usarse como objetivo de balance
 social porque mezcla casos dudosos.
 
+Si la corrida mezclada incluye artículos científicos, la ejecución se estratifica
+automáticamente: primero se consulta OpenAlex/Crossref por año y después se
+recorren las capas mensuales de prensa, foros e instituciones. Así la ausencia
+de artículos aparece pronto como brecha real de recuperación y no como un cero
+temporal causado por el orden del pipeline.
+
 La capa `reportes/otros` todavía debe leerse con cautela: actualmente funciona
 como búsqueda general que después puede clasificarse como reporte u otro tipo
 cuando la evidencia lo indique. No equivale todavía a un índice especializado de

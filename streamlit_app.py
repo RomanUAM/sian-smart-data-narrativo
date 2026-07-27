@@ -5732,8 +5732,46 @@ if selected_source_run or run or run_sequential:
             int(min_forums_per_year) if "forum" in mixed_required else 0,
             int(target_min_per_type_year),
         )
+        academic_modes = [mode for mode in source_modes if mode in {"openalex_oa", "crossref"}]
+        indexed_modes = [mode for mode in source_modes if mode not in {"openalex_oa", "crossref"}]
+        if academic_modes and indexed_modes:
+            academic_step = dict(run_config)
+            academic_step["source_modes"] = academic_modes
+            academic_step["download_pdfs"] = True
+            academic_step["required_source_types"] = ["scientific_article"]
+            academic_step["accept_source_types"] = ["scientific_article"]
+            academic_step["target_min_per_source_type_year"] = int(target_min_per_type_year)
+            academic_step["seed_url_file"] = ""
+            academic_step["source_collection"] = "articles_first"
+            academic_step["target_source_type"] = "scientific_article"
+            academic_step["variant_rubric"] = "mixed_layered"
+            academic_step["variant_term"] = query
+            academic_step["period_label"] = f"{int(start_year)}-{int(end_year)}"
+            academic_step["output_dir"] = str(Path(output_dir) / "mixed_layers" / "articles_first")
+
+            public_step = dict(run_config)
+            public_step["source_modes"] = indexed_modes
+            public_step["download_pdfs"] = False
+            public_required = [source_type for source_type in mixed_required if source_type != "scientific_article"]
+            public_step["required_source_types"] = public_required
+            public_step["accept_source_types"] = public_required
+            public_step["target_min_per_source_type_year"] = max(
+                int(min_news_per_year) if "news" in public_required else 0,
+                int(min_forums_per_year) if "forum" in public_required else 0,
+                int(target_min_per_type_year) if "institutional_report" in public_required else 0,
+            )
+            public_step["seed_url_file"] = ",".join(merge_unique(mixed_seed_files))
+            public_step["source_collection"] = "public_layers"
+            public_step["target_source_type"] = ""
+            public_step["variant_rubric"] = "mixed_layered"
+            public_step["variant_term"] = query
+            public_step["period_label"] = f"{int(start_year)}-{int(end_year)}"
+            public_step["output_dir"] = str(Path(output_dir) / "mixed_layers" / "public_layers")
+            run_config["run_plan"] = [academic_step, public_step]
+            run_config["output_dir"] = output_dir
         st.info(
-            "Araña mezclada balanceada: se aceptan varios tipos, pero cada tipo/año tiene su propio tope. "
+            "Araña mezclada por capas: si incluye artículos científicos, ahora OpenAlex/Crossref corren primero "
+            "para que la capa académica no quede escondida detrás de 84 meses de RSS/GDELT. "
             f"Tipos objetivo: {', '.join(mixed_required) or 'sin tipos objetivo explícitos'}. "
             f"Máximo por tipo/año: {run_config['max_records_per_source_type_year']}."
         )

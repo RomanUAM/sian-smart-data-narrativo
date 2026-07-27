@@ -1201,6 +1201,80 @@ def academic_topic_relevance(
     return False, f"low_academic_topic_score:{score}; required:{min_score}; terms:{', '.join(terms[:8])}"
 
 
+def build_academic_query_plan(
+    query: str,
+    variants: list[str],
+    geographic_terms: list[str],
+    *,
+    max_queries: int = 16,
+) -> list[str]:
+    """Build short scientific-search queries.
+
+    Academic engines behave differently from GDELT/RSS: if we search globally
+    and apply geography only as a post-filter, Mexico/LatAm papers are easily
+    buried. Therefore the scientific layer combines topic and geography early.
+    """
+    topic_terms = compact_query_variants(query, variants, limit=8) or [query]
+    geo_terms = clean_query_variants("", geographic_terms)[:4]
+    queries: list[str] = []
+    if geo_terms:
+        for topic in topic_terms:
+            for geo in geo_terms:
+                queries.append(f"{topic} {geo}".strip())
+        for topic in topic_terms:
+            if any(marker in strip_for_compare(topic) for marker in ["mexic", "latino", "america latina"]):
+                queries.append(topic)
+    else:
+        queries.extend(topic_terms)
+    normalized_seen = set()
+    output = []
+    for item in queries:
+        normalized = strip_for_compare(item)
+        if normalized and normalized not in normalized_seen:
+            output.append(item)
+            normalized_seen.add(normalized)
+        if len(output) >= max_queries:
+            break
+    return output or [query]
+
+
+def academic_exclude_terms(exclude_terms: list[str]) -> list[str]:
+    """Keep only exclusions that are true cross-domain contaminants for papers.
+
+    Biomedical terms such as HIV, hepatitis, keloid or dermatology can be
+    relevant to tattoo research. They should not be excluded in the scientific
+    layer; they can be classified later as biomedical subtopic.
+    """
+    allowed = {
+        "cigar",
+        "cigars",
+        "cigarro",
+        "cigarros",
+        "tobacco",
+        "tabaco",
+        "wrapper",
+        "habano",
+        "habanos",
+        "cigar lounge",
+        "smoke",
+        "smoking",
+        "nicaragua",
+        "nicaraguan",
+        "series p",
+        "brown label",
+        "robusto",
+        "tatuaje cigars",
+        "colonoscopic tattooing",
+        "colonoscopic",
+        "endoscopic tattooing",
+        "endoscopic",
+        "colonoscopy",
+        "polypectomy",
+        "indocyanine green",
+    }
+    return [term for term in exclude_terms if strip_for_compare(term) in {strip_for_compare(item) for item in allowed}]
+
+
 def extract_visible_text(page_html: str) -> str:
     parser = VisibleTextParser()
     parser.feed(page_html)
@@ -1232,14 +1306,17 @@ def strip_markup(value: str) -> str:
     return clean_text(value)
 
 
-def search_openalex_year(query: str, year: int, max_records: int) -> list[dict]:
+def search_openalex_year(query: str, year: int, max_records: int, oa_only: bool = True) -> list[dict]:
     rows: list[dict] = []
     cursor = "*"
     per_page = min(max_records, 200)
+    filters = [f"from_publication_date:{year}-01-01", f"to_publication_date:{year}-12-31"]
+    if oa_only:
+        filters.append("is_oa:true")
     while len(rows) < max_records:
         params = {
             "search": query,
-            "filter": f"from_publication_date:{year}-01-01,to_publication_date:{year}-12-31,is_oa:true",
+            "filter": ",".join(filters),
             "per-page": str(per_page),
             "sort": "publication_date:desc",
             "cursor": cursor,
@@ -1261,11 +1338,11 @@ def search_openalex_year(query: str, year: int, max_records: int) -> list[dict]:
 def search_crossref_year(query: str, year: int, max_records: int, timeout: int = 8) -> list[dict]:
     params = {
         "query.bibliographic": query,
-        "filter": f"from-pub-date:{year}-01-01,until-pub-date:{year}-12-31,type:journal-article,has-full-text:true",
+        "filter": f"from-pub-date:{year}-01-01,until-pub-date:{year}-12-31,type:journal-article",
         "rows": str(min(max_records, 100)),
         "sort": "published",
         "order": "desc",
-        "select": "DOI,title,container-title,abstract,author,published-print,published-online,published,URL,subject",
+        "select": "DOI,title,container-title,abstract,author,published-print,published-online,published,URL,subject,link",
     }
     url = CROSSREF_WORKS_ENDPOINT + "?" + urllib.parse.urlencode(params)
     data = request_json(url, timeout=timeout)
@@ -1295,11 +1372,21 @@ def openalex_record(
         for authorship in authorships[:8]
         if (authorship.get("author") or {}).get("display_name")
     )
+    institution_names = []
+    institution_countries = []
+    for authorship in authorships[:12]:
+        for institution in authorship.get("institutions") or []:
+            if institution.get("display_name"):
+                institution_names.append(str(institution.get("display_name")))
+            if institution.get("country_code"):
+                institution_countries.append(str(institution.get("country_code")).upper())
+    country = institution_countries[0] if institution_countries else ""
+    institutions = ", ".join(institution_names[:8])
     concepts = ", ".join((concept.get("display_name") or "") for concept in (item.get("concepts") or [])[:8])
-    text_clean = clean_text(" ".join(part for part in [title, abstract, author_names, concepts] if part))
+    text_clean = clean_text(" ".join(part for part in [title, abstract, author_names, institutions, concepts] if part))
     text_normalized = strip_for_compare(text_clean)
     scientific_min_text_chars = min(min_text_chars, 40)
-    status = "ok" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
     evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
     return NewsRecord(
         query=query,
@@ -1317,14 +1404,14 @@ def openalex_record(
         title=title,
         published_date=str(item.get("publication_date") or year),
         language=str(item.get("language") or ""),
-        country="",
+        country=country,
         text_raw_visible=text_clean,
         text_clean=text_clean,
         text_normalized=text_normalized,
         text_length=len(text_clean),
         word_count=len(text_normalized.split()),
         paragraph_count=1 if text_clean else 0,
-        cleaning_notes=["openalex_metadata_abstract"],
+        cleaning_notes=["openalex_metadata_abstract"] + ([] if pdf_url else ["metadata_only_no_pdf"]),
         source_api="openalex_oa_works",
         fetched_at=dt.datetime.now(dt.UTC).isoformat(),
         status=status,
@@ -1367,7 +1454,7 @@ def crossref_record(
     date_parts = (published or {}).get("date-parts") or [[year]]
     published_date = "-".join(str(part) for part in date_parts[0]) if date_parts and date_parts[0] else str(year)
     scientific_min_text_chars = min(min_text_chars, 40)
-    status = "ok" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
     evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
     return NewsRecord(
         query=query,
@@ -1392,7 +1479,7 @@ def crossref_record(
         text_length=len(text_clean),
         word_count=len(text_normalized.split()),
         paragraph_count=1 if text_clean else 0,
-        cleaning_notes=["crossref_metadata_abstract"],
+        cleaning_notes=["crossref_metadata_abstract"] + ([] if pdf_url else ["metadata_only_no_pdf"]),
         source_api="crossref_works",
         fetched_at=dt.datetime.now(dt.UTC).isoformat(),
         status=status,
@@ -2164,9 +2251,8 @@ def crawl_news(
             progress(f"balance_status: {start.year}-{start.month:02d} · {summary}")
 
     if "openalex_oa" in active_source_modes or "crossref" in active_source_modes:
-        academic_queries = clean_query_variants(query, clean_variants)
-        if not academic_queries:
-            academic_queries = [query]
+        academic_queries = build_academic_query_plan(query, clean_variants, clean_geographic_terms)
+        scientific_exclude_terms = academic_exclude_terms(clean_exclude_terms)
 
     if "openalex_oa" in active_source_modes:
         if progress:
@@ -2181,7 +2267,17 @@ def crawl_news(
             try:
                 items = []
                 for academic_query in academic_queries:
-                    items.extend(search_openalex_year(academic_query, year, max_records_per_month))
+                    oa_items = search_openalex_year(academic_query, year, max_records_per_month, oa_only=True)
+                    items.extend(oa_items)
+                    if len(oa_items) < max_records_per_month:
+                        items.extend(
+                            search_openalex_year(
+                                academic_query,
+                                year,
+                                max(0, max_records_per_month - len(oa_items)),
+                                oa_only=False,
+                            )
+                        )
                     if interruptible_sleep(search_delay_seconds, stop_requested):
                         if progress:
                             progress("Stopped by user during OpenAlex search delay.")
@@ -2216,7 +2312,7 @@ def crawl_news(
                     record.medium,
                     record.title,
                     record.text_clean,
-                    exclude_terms=clean_exclude_terms,
+                    exclude_terms=scientific_exclude_terms,
                     exclude_domains=clean_exclude_domains,
                 )
                 if excluded:
@@ -2318,7 +2414,7 @@ def crawl_news(
                     record.medium,
                     record.title,
                     record.text_clean,
-                    exclude_terms=clean_exclude_terms,
+                    exclude_terms=scientific_exclude_terms,
                     exclude_domains=clean_exclude_domains,
                 )
                 if excluded:

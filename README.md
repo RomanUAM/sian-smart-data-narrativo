@@ -200,6 +200,12 @@ cada mes se emite `balance_status` para ver qué capas siguen incompletas. El
 balance se intenta por cuota anual independiente; no significa que el sistema
 invente registros ni que `other` sea una categoría interpretativa válida.
 
+Cuando la araña mezclada incluye `scientific_article`, la app separa
+internamente la ejecución en capas: OpenAlex/Crossref corren primero por año y
+después se ejecutan las capas web mensuales. Esto evita que la capa académica
+aparezca en cero durante horas sólo porque quedó detrás de 84 meses de
+GDELT/RSS/foros.
+
 - distribución del corpus por año, fuente, tipo de fuente, evidencia, idioma y localización;
 - estructura narrativa por documento: evento inicial, conflicto, punto de cambio, resolución y consecuencias;
 - actores detectados, validación humana de actores y contexto/situación del documento;
