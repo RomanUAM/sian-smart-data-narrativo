@@ -6,6 +6,7 @@ import json
 import hashlib
 import queue
 import random
+import re
 import shutil
 import statistics
 import threading
@@ -566,6 +567,35 @@ def source_type_targets_from_config(config: dict, fallback_min: int, fallback_ma
             "target_max": int(config.get("max_records_per_source_type_year", fallback_max) or fallback_max),
         }
     return targets
+
+
+def live_balance_counts_from_logs(logs: list[str]) -> Counter:
+    """Recover live year/source counters from human-readable progress logs.
+
+    The worker currently emits text progress. Until progress events are fully
+    structured, this keeps the visible balance table synchronized while a run is
+    still active.
+    """
+    counts: Counter = Counter()
+    for message in logs or []:
+        text = str(message)
+        accepted = re.search(r"^(?:ok|ok_partial|too_short):\s*(\d{4})\s*·\s*([a-z_]+)\s+(\d+)/min", text)
+        if accepted:
+            year = int(accepted.group(1))
+            source_type = accepted.group(2)
+            count = int(accepted.group(3))
+            counts[(year, source_type)] = max(counts[(year, source_type)], count)
+            continue
+        status = re.search(r"balance_status:\s*(\d{4})-\d{2}\s*·\s*(.*)", text)
+        if status:
+            year = int(status.group(1))
+            for part in status.group(2).split(","):
+                match = re.search(r"([a-z_]+)=(\d+)/min", part.strip())
+                if match:
+                    source_type = match.group(1)
+                    count = int(match.group(2))
+                    counts[(year, source_type)] = max(counts[(year, source_type)], count)
+    return counts
 
 
 def source_status_rows(rows: list[dict], config: dict | None = None) -> list[dict]:
@@ -5436,6 +5466,9 @@ if balanced_target_types:
         for row in st.session_state.get("spider_rows", [])
         if has_usable_text(row) and str(row.get("year", "")).isdigit()
     )
+    live_log_counts = live_balance_counts_from_logs(st.session_state.get("spider_logs", []))
+    for key, value in live_log_counts.items():
+        current_balance_counts[key] = max(current_balance_counts.get(key, 0), value)
     balance_counter_rows = []
     for year in range(int(start_year), int(end_year) + 1):
         for source_type, minimum in balanced_target_types:
@@ -5726,6 +5759,21 @@ if st.session_state.spider_error:
 
 if st.session_state.spider_logs:
     st.subheader("Avance")
+    live_counts = live_balance_counts_from_logs(st.session_state.spider_logs)
+    if live_counts:
+        st.caption("Contadores vivos recuperados de los logs de ejecución.")
+        st.dataframe(
+            [
+                {
+                    "year": year,
+                    "source_type": source_type,
+                    "accepted_usable_so_far": count,
+                }
+                for (year, source_type), count in sorted(live_counts.items())
+            ],
+            use_container_width=True,
+            hide_index=True,
+        )
     st.code("\n".join(st.session_state.spider_logs[-40:]))
 
 if st.session_state.spider_rows:
