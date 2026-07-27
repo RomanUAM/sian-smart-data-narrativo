@@ -277,7 +277,7 @@ def start_worker(config: dict) -> None:
                         row["variant_term_index"] = step_config.get("variant_term_index", "")
                         row["source_collection"] = step_config.get("source_collection", "")
                         all_rows.append(row)
-                        if row.get("status") in {"ok", "ok_partial"}:
+                        if has_usable_text(row):
                             sequential_counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
                     progress(
                         f"Finished sequential run {index}/{total_steps}: "
@@ -389,6 +389,34 @@ def load_saved_rows(path: str) -> list[dict]:
     st.session_state.spider_rows = rows
     st.session_state.loaded_path = path
     return rows
+
+
+def candidate_analysis_paths(path: str) -> list[str]:
+    base = Path(path or "news_output")
+    if base.is_dir() or not base.suffix:
+        candidates = [
+            base / "news_records_sequential_merged.json",
+            base / "news_records_merged.json",
+            base / "news_records.json",
+            base / "news_records.jsonl",
+            base,
+        ]
+    else:
+        candidates = [base]
+    return [str(item) for item in candidates]
+
+
+def autoload_saved_rows(path: str) -> tuple[list[dict], str]:
+    for candidate in candidate_analysis_paths(path):
+        try:
+            rows = load_records_from_path(candidate)
+        except Exception:
+            continue
+        if rows:
+            st.session_state.spider_rows = rows
+            st.session_state.loaded_path = candidate
+            return rows, candidate
+    return [], ""
 
 
 def source_output_dir(base_output_dir: str, source_key: str) -> str:
@@ -1310,6 +1338,43 @@ def render_results(rows: list[dict]) -> None:
 def render_analysis_tab(default_output_dir: str) -> None:
     st.subheader("Análisis local de narrativas")
     st.caption("Todo se calcula en tu computadora con los JSON guardados. No se envían textos a modelos externos.")
+    st.markdown("Mapa de módulos disponibles")
+    st.dataframe(
+        [
+            {
+                "módulo": "Corpus y balance",
+                "qué muestra": "calidad del corpus, tipos de fuente, años, medios, cobertura y registros excluidos",
+                "condición": "requiere JSON local cargado",
+            },
+            {
+                "módulo": "Red narrativa",
+                "qué muestra": "actores, eventos, fuentes, relaciones narrativas ponderadas y validación humana de actores",
+                "condición": "requiere documentos con texto analizable",
+            },
+            {
+                "módulo": "Cubridor y métodos",
+                "qué muestra": "modelo SCP multiobjetivo, MOEA, MOSA, MMC-MO, glotón ponderado, Pareto, hipervolumen y k corridas",
+                "condición": "requiere red narrativa con aristas",
+            },
+            {
+                "módulo": "Grafo de conocimiento",
+                "qué muestra": "monogramas, bigramas, trigramas, fuentes, años, comunidades y nodos centrales",
+                "condición": "requiere texto limpio después de stopwords",
+            },
+            {
+                "módulo": "Red semántica / Louvain",
+                "qué muestra": "red de coocurrencia limpia, comunidades Louvain/modularidad y cubridor multiobjetivo semántico",
+                "condición": "requiere términos frecuentes y aristas semánticas",
+            },
+            {
+                "módulo": "Sentimiento y exportación",
+                "qué muestra": "sentimiento local por fuente/año y archivos CSV/JSON descargables",
+                "condición": "requiere registros seleccionados",
+            },
+        ],
+        use_container_width=True,
+        hide_index=True,
+    )
 
     with st.expander("Marco de lectura: ¿qué entendemos aquí por narrativa?", expanded=True):
         st.markdown(
@@ -1382,8 +1447,16 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 st.warning("No encontré registros en esa ruta.")
 
     rows = st.session_state.spider_rows
+    if not rows and not st.session_state.get("spider_running"):
+        rows, loaded_candidate = autoload_saved_rows(analysis_path)
+        if rows:
+            st.info(f"Corpus cargado automáticamente desde: {loaded_candidate}")
     if not rows:
-        st.info("Carga un corpus guardado o corre primero la araña. Si Streamlit se cerró, usa la carpeta de salida para recuperar los JSON.")
+        st.info(
+            "Carga un corpus guardado o corre primero la araña. "
+            "Si Streamlit se cerró, usa la carpeta de salida para recuperar los JSON. "
+            "Las redes y el modelo multiobjetivo aparecen después de cargar registros analizables."
+        )
         return
 
     usable = enrich_records_for_analysis([row for row in rows if has_usable_text(row)])
@@ -1488,9 +1561,9 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "Relevancia tópica mínima",
             min_value=0,
             max_value=20,
-            value=3,
+            value=0,
             step=1,
-            help="0 desactiva el filtro. Recomendado: 3 si el tema aparece en título; 5 o más para corpus más estricto.",
+            help="0 deja ver todo el corpus usable. Sube a 3–5 cuando quieras depurar ruido después de observar redes y n-gramas.",
         )
 
     selected_records = filter_records(
@@ -2644,8 +2717,8 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         suggested_group_graph = build_knowledge_graph(
             selected_records,
             top_n_each=25,
-            min_node_count=2,
-            min_edge_weight=2,
+            min_node_count=1,
+            min_edge_weight=1,
             extra_stopwords=extra_stopwords,
         )
         suggested_adaptive_groups = adaptive_topic_groups_from_graph(suggested_group_graph)
@@ -2715,8 +2788,8 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.caption("Incluye monogramas, bigramas, trigramas, fuentes, años, idioma y localización. Los grupos adaptativos salen de comunidades del grafo.")
         c1, c2, c3 = st.columns(3)
         kg_top_n = c1.slider("Top por tipo de n-grama", 10, 80, 30, step=5)
-        kg_min_node = c2.slider("Frecuencia mínima de nodo", 1, 10, 2)
-        kg_min_edge = c3.slider("Peso mínimo de arista", 1, 10, 2)
+        kg_min_node = c2.slider("Frecuencia mínima de nodo", 1, 10, 1)
+        kg_min_edge = c3.slider("Peso mínimo de arista", 1, 10, 1)
         knowledge_graph = build_knowledge_graph(
             selected_records,
             top_n_each=kg_top_n,
@@ -2917,7 +2990,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         c1, c2, c3, c4 = st.columns(4)
         top_network_terms = c1.slider("Términos en red", 20, 120, 50, step=10)
         window_size = c2.slider("Ventana de coocurrencia", 2, 10, 4)
-        min_cooc = c3.slider("Coocurrencia mínima", 1, 10, 2)
+        min_cooc = c3.slider("Coocurrencia mínima", 1, 10, 1)
         semantic_community_algorithm = c4.selectbox(
             "Módulos semánticos",
             options=["louvain", "greedy_modularity", "connected_components"],
