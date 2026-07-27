@@ -8,7 +8,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from news_spider import NewsRecord, build_query, classify_source_type, month_periods, write_cli_manifest  # noqa: E402
+from news_spider import (  # noqa: E402
+    NewsRecord,
+    build_query,
+    classify_source_type,
+    month_periods,
+    passes_geographic_filter,
+    write_cli_manifest,
+)
 from narrative_analysis import _cover_problem_data, _cover_result_from_ids, _evaluate_cover_solution  # noqa: E402
 from source_profiles import source_access_policy  # noqa: E402
 from structural_narrative import technical_traceability_rows  # noqa: E402
@@ -78,6 +85,28 @@ class CoreBehaviorTests(unittest.TestCase):
     def test_source_access_policy_marks_partial_and_paywall(self) -> None:
         self.assertEqual(source_access_policy("https://www.proceso.com.mx/x")["access"], "partial")
         self.assertEqual(source_access_policy("https://www.nytimes.com/2020/01/01/x.html")["access"], "paywall")
+
+    def test_geographic_filter_rejects_unscoped_external_source(self) -> None:
+        ok, reason = passes_geographic_filter(
+            "México",
+            ["Mexico", "México", "Mexican", "mexicano", "mexicana"],
+            "https://www.20minutos.es/noticia/123/tatuaje/",
+            "20Minutos",
+            "Carlo Costanzia inaugura barbería y estudio de tatuajes",
+            "",
+            country="",
+        )
+        self.assertFalse(ok, reason)
+        ok, _ = passes_geographic_filter(
+            "México",
+            ["Mexico", "México", "Mexican", "mexicano", "mexicana"],
+            "https://www.jornada.com.mx/noticia/2020/01/12/cultura/tatuaje",
+            "La Jornada",
+            "El tatuaje en México",
+            "",
+            country="",
+        )
+        self.assertTrue(ok)
 
     def test_technical_traceability_rows_hashes_records(self) -> None:
         rows = technical_traceability_rows(

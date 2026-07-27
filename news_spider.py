@@ -982,10 +982,26 @@ def title_from_url(url: str) -> str:
     return slug[:180] or url
 
 
-def load_seed_url_articles(seed_url_file: str | Path | None) -> list[dict]:
+def seed_file_paths(seed_url_file: str | Path | None) -> list[Path]:
     if not seed_url_file:
         return []
-    path = Path(seed_url_file)
+    if isinstance(seed_url_file, Path):
+        return [seed_url_file]
+    return [
+        Path(part.strip())
+        for part in str(seed_url_file).split(",")
+        if part.strip()
+    ]
+
+
+def load_seed_url_articles(seed_url_file: str | Path | None) -> list[dict]:
+    rows = []
+    for path in seed_file_paths(seed_url_file):
+        rows.extend(load_seed_url_articles_from_path(path))
+    return rows
+
+
+def load_seed_url_articles_from_path(path: Path) -> list[dict]:
     if not path.exists():
         return []
     try:
@@ -1101,6 +1117,40 @@ def contains_excluded_content(
         if normalized and normalized in haystack:
             return True, f"excluded_term:{term}"
     return False, ""
+
+
+def passes_geographic_filter(
+    geographic_scope: str,
+    geographic_terms: list[str],
+    url: str,
+    medium: str,
+    title: str,
+    text: str,
+    country: str = "",
+) -> tuple[bool, str]:
+    scope = strip_for_compare(geographic_scope)
+    if not scope or scope in {"global", "global sin limite regional", "sin limite regional"}:
+        return True, "global_scope"
+    terms = clean_query_variants("", geographic_terms)
+    if not terms:
+        return True, "no_geographic_terms"
+    policy = source_access_policy(url)
+    policy_country = str(policy.get("country") or "").upper()
+    record_country = str(country or "").upper()
+    domain = urllib.parse.urlparse(url).netloc.lower()
+    if "mex" in scope:
+        if record_country == "MX" or policy_country == "MX" or domain.endswith(".mx") or ".com.mx" in domain or ".gob.mx" in domain:
+            return True, "mexico_source_or_domain"
+    latin_countries = {"MX", "AR", "BR", "CL", "CO", "PE", "UY", "PY", "BO", "EC", "VE", "CR", "PA", "GT", "HN", "SV", "NI", "DO", "CU", "PR"}
+    if "latin" in scope or "america latina" in scope or "latinoamerica" in scope:
+        if record_country in latin_countries or policy_country in latin_countries:
+            return True, "latin_america_source_country"
+    haystack = strip_for_compare(" ".join([url, medium, title, text[:4000]]))
+    normalized_terms = [strip_for_compare(term) for term in terms if strip_for_compare(term)]
+    for term in normalized_terms:
+        if term and term in haystack:
+            return True, f"geo_term:{term}"
+    return False, "missing_geographic_signal"
 
 
 def expanded_topic_terms(query: str, variants: list[str] | None = None) -> list[str]:
@@ -2042,6 +2092,19 @@ def crawl_news(
                 if progress:
                     progress(f"excluded: {year} · {medium} · {reason} · {title[:70]}")
                 continue
+            geo_ok, geo_reason = passes_geographic_filter(
+                geographic_scope,
+                clean_geographic_terms,
+                url,
+                medium,
+                title,
+                text_clean,
+                country=country,
+            )
+            if not geo_ok:
+                if progress:
+                    progress(f"excluded_geo: {year} · {medium} · {geo_reason} · {title[:70]}")
+                continue
             if not can_accept_record(year, source_type):
                 if progress:
                     progress(f"cap_reached: {year} · {source_type} · max {max_records_per_source_type_year}/year/type")
@@ -2170,6 +2233,19 @@ def crawl_news(
                     if progress:
                         progress(f"excluded: {year} · OpenAlex · {relevance_reason} · {record.title[:70]}")
                     continue
+                geo_ok, geo_reason = passes_geographic_filter(
+                    geographic_scope,
+                    clean_geographic_terms,
+                    record.url,
+                    record.medium,
+                    record.title,
+                    record.text_clean,
+                    country=record.country,
+                )
+                if not geo_ok:
+                    if progress:
+                        progress(f"excluded_geo: {year} · OpenAlex · {geo_reason} · {record.title[:70]}")
+                    continue
                 if not can_accept_record(record.year, record.source_type):
                     if progress:
                         progress(f"cap_reached: {record.year} · {record.source_type} · max {max_records_per_source_type_year}/year/type")
@@ -2258,6 +2334,19 @@ def crawl_news(
                 if not relevant:
                     if progress:
                         progress(f"excluded: {year} · Crossref · {relevance_reason} · {record.title[:70]}")
+                    continue
+                geo_ok, geo_reason = passes_geographic_filter(
+                    geographic_scope,
+                    clean_geographic_terms,
+                    record.url,
+                    record.medium,
+                    record.title,
+                    record.text_clean,
+                    country=record.country,
+                )
+                if not geo_ok:
+                    if progress:
+                        progress(f"excluded_geo: {year} · Crossref · {geo_reason} · {record.title[:70]}")
                     continue
                 if not can_accept_record(record.year, record.source_type):
                     if progress:

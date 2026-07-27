@@ -545,7 +545,7 @@ def source_access_policy(url_or_domain: str) -> dict:
     """
     domain = canonical_domain(url_or_domain)
     if not domain:
-        return {"access": "unknown", "source_type": "", "medium": "", "domain": ""}
+        return {"access": "unknown", "source_type": "", "medium": "", "domain": "", "country": "", "region": ""}
     for profile in [*NEWS_SOURCE_PROFILES, *FORUM_SOURCE_PROFILES, *INSTITUTIONAL_SOURCE_PROFILES]:
         profile_domain = canonical_domain(profile.get("domain", ""))
         if profile_domain and domain.endswith(profile_domain):
@@ -554,8 +554,10 @@ def source_access_policy(url_or_domain: str) -> dict:
                 "source_type": str(profile.get("source_type") or ""),
                 "medium": str(profile.get("medium") or ""),
                 "domain": profile_domain,
+                "country": str(profile.get("country") or ""),
+                "region": str(profile.get("region") or ""),
             }
-    return {"access": "unknown", "source_type": "", "medium": "", "domain": domain}
+    return {"access": "unknown", "source_type": "", "medium": "", "domain": domain, "country": "", "region": ""}
 
 
 def profile_domains(

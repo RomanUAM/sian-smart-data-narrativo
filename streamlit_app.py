@@ -5406,6 +5406,11 @@ if selected_source_run or run or run_sequential:
         mixed_required = merge_unique(mixed_required)
         run_config["required_source_types"] = mixed_required
         run_config["accept_source_types"] = mixed_required
+        mixed_seed_files = [
+            path for path in config.get("seed_url_files_by_source", {}).values()
+            if path
+        ]
+        run_config["seed_url_file"] = ",".join(merge_unique(mixed_seed_files))
         run_config["target_min_per_source_type_year"] = max(
             int(min_news_per_year) if "news" in mixed_required else 0,
             int(min_forums_per_year) if "forum" in mixed_required else 0,
