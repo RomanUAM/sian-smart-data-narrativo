@@ -3710,6 +3710,7 @@ SOURCE_MODE_LABELS = {
     "Noticias web / Google News RSS": "google_news_rss",
     "Artículos abiertos / OpenAlex OA": "openalex_oa",
     "Índice DOI / Crossref (metadatos + links)": "crossref",
+    "Artículos abiertos latinoamericanos / Redalyc": "redalyc",
     "Foros y Reddit públicos / GDELT por dominio": "forums",
     "Reddit público / RSS de publicaciones": "reddit_rss",
     "Gobierno e instituciones públicas / GDELT": "institutional_gdelt",
@@ -5229,6 +5230,7 @@ with st.sidebar:
         "Noticias web / Google News RSS",
         "Artículos abiertos / OpenAlex OA",
         "Índice DOI / Crossref (metadatos + links)",
+        "Artículos abiertos latinoamericanos / Redalyc",
         "Foros y Reddit públicos / GDELT por dominio",
         "Gobierno e instituciones públicas / GDELT",
     ]
@@ -5238,7 +5240,7 @@ with st.sidebar:
         default=[label for label in default_source_mode_labels if label in SOURCE_MODE_LABELS],
         help=(
             "GDELT y Google News RSS encuentran noticias y páginas públicas; OpenAlex OA prioriza artículos abiertos; "
-            "Crossref es índice DOI con metadatos y posibles links, no garantía de texto libre; "
+            "Crossref es índice DOI con metadatos y posibles links, no garantía de texto libre; Redalyc aporta revistas abiertas latinoamericanas; "
             "foros se buscan como dominios públicos; Reddit RSS queda como opción manual exploratoria porque suele bloquear con 429 en corridas largas; "
             "gobierno/instituciones se separa como capa institucional. Instagram no se raspa automáticamente: requiere API/exportación/manual por robustez metodológica."
         ),
@@ -5522,7 +5524,7 @@ SEQUENTIAL_SOURCE_LAYER_SPECS = {
     "Noticias": ("news", ["gdelt_news", "google_news_rss"], False),
     "Foros/conversaciones": ("forums", ["forums"], False),
     "Gobierno/instituciones": ("institutional", ["institutional_gdelt"], False),
-    "Artículos + PDFs": ("articles", ["openalex_oa", "crossref"], True),
+    "Artículos + PDFs": ("articles", ["openalex_oa", "crossref", "redalyc"], True),
     "Reportes/Otros": ("reports_other", ["gdelt_news"], False),
 }
 SOURCE_COLLECTION_ACCEPT_TYPES = {
@@ -5660,7 +5662,7 @@ if any(mode in source_modes for mode in {"forums", "reddit_rss"}):
     balanced_target_types.append(("forum", int(min_forums_per_year)))
 if "institutional_gdelt" in source_modes:
     balanced_target_types.append(("institutional_report", int(target_min_per_type_year)))
-if any(mode in source_modes for mode in {"openalex_oa", "crossref"}):
+if any(mode in source_modes for mode in {"openalex_oa", "crossref", "redalyc"}):
     balanced_target_types.append(("scientific_article", int(target_min_per_type_year)))
 if balanced_target_types:
     st.caption(
@@ -5798,7 +5800,7 @@ source_run_specs = {
     "news": (run_news, ["gdelt_news", "google_news_rss"], False),
     "forums": (run_forums, ["forums"], False),
     "institutional": (run_institutional, ["institutional_gdelt"], False),
-    "articles": (run_articles, ["openalex_oa", "crossref"], True),
+    "articles": (run_articles, ["openalex_oa", "crossref", "redalyc"], True),
     "reports_other": (run_reports, ["gdelt_news"], False),
 }
 
@@ -5923,7 +5925,7 @@ if selected_source_run or run or run_sequential:
             mixed_required.append("forum")
         if "institutional_gdelt" in source_modes:
             mixed_required.append("institutional_report")
-        if any(mode in source_modes for mode in {"openalex_oa", "crossref"}):
+        if any(mode in source_modes for mode in {"openalex_oa", "crossref", "redalyc"}):
             mixed_required.append("scientific_article")
         mixed_required = merge_unique(mixed_required)
         run_config["required_source_types"] = mixed_required
@@ -5938,8 +5940,8 @@ if selected_source_run or run or run_sequential:
             int(min_forums_per_year) if "forum" in mixed_required else 0,
             int(target_min_per_type_year),
         )
-        academic_modes = [mode for mode in source_modes if mode in {"openalex_oa", "crossref"}]
-        indexed_modes = [mode for mode in source_modes if mode not in {"openalex_oa", "crossref"}]
+        academic_modes = [mode for mode in source_modes if mode in {"openalex_oa", "crossref", "redalyc"}]
+        indexed_modes = [mode for mode in source_modes if mode not in {"openalex_oa", "crossref", "redalyc"}]
         if academic_modes and indexed_modes:
             academic_step = dict(run_config)
             academic_step["source_modes"] = academic_modes

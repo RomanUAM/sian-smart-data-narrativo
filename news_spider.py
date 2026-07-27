@@ -32,8 +32,9 @@ GDELT_ENDPOINT = "https://api.gdeltproject.org/api/v2/doc/doc"
 OPENALEX_WORKS_ENDPOINT = "https://api.openalex.org/works"
 GOOGLE_NEWS_RSS_ENDPOINT = "https://news.google.com/rss/search"
 CROSSREF_WORKS_ENDPOINT = "https://api.crossref.org/works"
+REDALYC_BASE_URL = "https://www.redalyc.org"
 REDDIT_SEARCH_RSS_ENDPOINT = "https://www.reddit.com/search.rss"
-USER_AGENT = "LocalAcademicNewsSpider/0.1 (+local research use)"
+USER_AGENT = "Mozilla/5.0 (compatible; SIANNarrativeResearch/1.0; +https://github.com/RomanUAM/sian-smart-data-narrativo)"
 ALLOW_SSL_FALLBACK = True
 ROBOTS_CACHE: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
@@ -1385,6 +1386,52 @@ def search_crossref_year(query: str, year: int, max_records: int, timeout: int =
     return ((data.get("message") or {}).get("items") or [])[:max_records]
 
 
+def redalyc_pdf_url(item: dict) -> str:
+    journal_id = str(item.get("cveRevista") or "").strip()
+    article_id = str(item.get("cveArticulo") or "").strip()
+    if not journal_id or not article_id:
+        return ""
+    jatspdf = str(item.get("jatspdf") or "").strip()
+    if jatspdf in {"7", "8"}:
+        path = f"/journal/{journal_id}/{article_id}/{article_id}.pdf"
+    else:
+        path = f"/pdf/{journal_id}/{article_id}.pdf"
+    return urllib.parse.urljoin(REDALYC_BASE_URL, path)
+
+
+def search_redalyc_year(query: str, year: int, max_records: int, timeout: int = 8) -> list[dict]:
+    """Search Redalyc public article endpoint and keep records from the requested year.
+
+    Redalyc is especially useful for Latin American open-access journals. Its public
+    search endpoint is paginated but not reliably year-filtered, so filtering is
+    applied locally and the scan is capped to avoid brute-force behavior.
+    """
+    rows: list[dict] = []
+    safe_query = (query or "").strip().replace("/", "s-s") or "0"
+    page_size = min(max(max_records * 2, 10), 50)
+    max_pages = 4
+    for page in range(1, max_pages + 1):
+        encoded_query = urllib.parse.quote(safe_query, safe="")
+        url = f"{REDALYC_BASE_URL}/service/r2020/getArticles/{encoded_query}/{page}/{page_size}/1/default"
+        data = request_json(url, timeout=timeout)
+        items = data.get("resultados") or []
+        if not items:
+            break
+        for item in items:
+            try:
+                item_year = int(str(item.get("anioArticulo") or item.get("anoEdcNum") or "0")[:4])
+            except ValueError:
+                continue
+            if item_year == int(year):
+                rows.append(item)
+                if len(rows) >= max_records:
+                    return rows
+        total = int(data.get("totalResultados") or 0)
+        if page * page_size >= total:
+            break
+    return rows[:max_records]
+
+
 def openalex_record(
     item: dict,
     query: str,
@@ -1517,6 +1564,63 @@ def crossref_record(
         paragraph_count=1 if text_clean else 0,
         cleaning_notes=["crossref_metadata_abstract"] + ([] if pdf_url else ["metadata_only_no_pdf"]),
         source_api="crossref_works",
+        fetched_at=dt.datetime.now(dt.UTC).isoformat(),
+        status=status,
+        error="",
+        pdf_url=pdf_url,
+    )
+
+
+def redalyc_record(
+    item: dict,
+    query: str,
+    clean_variants: list[str],
+    geographic_scope: str,
+    clean_geographic_terms: list[str],
+    year: int,
+    min_text_chars: int,
+) -> NewsRecord:
+    title = strip_markup(str(item.get("titulo") or ""))
+    medium = clean_text(str(item.get("nomRevista") or "Redalyc"))
+    article_id = str(item.get("cveArticulo") or "").strip()
+    journal_id = str(item.get("cveRevista") or "").strip()
+    url = urllib.parse.urljoin(REDALYC_BASE_URL, f"/articulo.oa?id={article_id}") if article_id else REDALYC_BASE_URL
+    pdf_url = redalyc_pdf_url(item)
+    authors = strip_markup(str(item.get("autores") or item.get("apellidoNombre") or ""))
+    keywords = strip_markup(str(item.get("palabras") or "").replace(">>>", ". "))
+    abstract = strip_markup(str(item.get("resumen") or "").replace(">>>", ". "))
+    content = strip_markup(str(item.get("contenido") or ""))
+    journal_institution = strip_markup(str(item.get("nomInstitucionRev") or ""))
+    text_clean = clean_text(" ".join(part for part in [title, abstract, keywords, authors, journal_institution, content] if part))
+    text_normalized = strip_for_compare(text_clean)
+    scientific_min_text_chars = min(min_text_chars, 40)
+    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
+    return NewsRecord(
+        query=query,
+        query_variants=clean_variants,
+        geographic_scope=geographic_scope,
+        geographic_terms=clean_geographic_terms,
+        year=year,
+        source_type="scientific_article",
+        source_type_confidence="high",
+        source_type_evidence="redalyc_open_access_article",
+        evidence_level=evidence_level,
+        evidence_weight=evidence_weight,
+        medium=medium or "Redalyc",
+        url=url,
+        title=title,
+        published_date=str(item.get("anioArticulo") or item.get("anoEdcNum") or year),
+        language=str(item.get("idiomaArticulo") or ""),
+        country=str(item.get("paisRevista") or item.get("paisInstitucion") or ""),
+        text_raw_visible=text_clean,
+        text_clean=text_clean,
+        text_normalized=text_normalized,
+        text_length=len(text_clean),
+        word_count=len(text_normalized.split()),
+        paragraph_count=1 if text_clean else 0,
+        cleaning_notes=["redalyc_metadata_abstract", f"redalyc_journal:{journal_id}"] + ([] if pdf_url else ["metadata_only_no_pdf"]),
+        source_api="redalyc_r2020_articles",
         fetched_at=dt.datetime.now(dt.UTC).isoformat(),
         status=status,
         error="",
@@ -2355,7 +2459,7 @@ def crawl_news(
             )
             progress(f"balance_status: {start.year}-{start.month:02d} · {summary}")
 
-    if "openalex_oa" in active_source_modes or "crossref" in active_source_modes:
+    if any(mode in active_source_modes for mode in {"openalex_oa", "crossref", "redalyc"}):
         academic_queries = build_academic_query_plan(query, clean_variants, clean_geographic_terms)
         scientific_exclude_terms = academic_exclude_terms(clean_exclude_terms)
 
@@ -2593,6 +2697,116 @@ def crawl_news(
                         progress("Stopped by user during Crossref delay.")
                     break
 
+    if "redalyc" in active_source_modes:
+        if progress:
+            progress(f"Redalyc OA queries: {', '.join(academic_queries)} · Latin American open-access repository")
+        for year in range(start_year, end_year + 1):
+            if should_stop(stop_requested):
+                if progress:
+                    progress("Stopped by user before next Redalyc year.")
+                break
+            if progress:
+                progress(f"Searching Redalyc {year}")
+            items: list[dict] = []
+            for academic_query in academic_queries:
+                try:
+                    items.extend(search_redalyc_year(academic_query, year, max_records_per_month))
+                except urllib.error.HTTPError as exc:
+                    if progress:
+                        progress(f"Redalyc query error {year} · {academic_query}: HTTP {exc.code} {exc.reason}")
+                except Exception as exc:  # noqa: BLE001
+                    if progress:
+                        progress(f"Redalyc query error {year} · {academic_query}: {exc}")
+                if len(items) >= max_records_per_month:
+                    break
+                if interruptible_sleep(search_delay_seconds, stop_requested):
+                    if progress:
+                        progress("Stopped by user during Redalyc search delay.")
+                    break
+            for item in items:
+                if should_stop(stop_requested):
+                    if progress:
+                        progress("Stopped by user before next Redalyc item.")
+                    break
+                record = redalyc_record(
+                    item=item,
+                    query=query,
+                    clean_variants=clean_variants,
+                    geographic_scope=geographic_scope,
+                    clean_geographic_terms=clean_geographic_terms,
+                    year=year,
+                    min_text_chars=min_text_chars,
+                )
+                dedup_key = document_dedup_key(record)
+                if not record.url or (dedup_key and dedup_key in seen_document_keys):
+                    continue
+                if dedup_key:
+                    seen_document_keys.add(dedup_key)
+                if strict_open_access_articles and not record.pdf_url:
+                    if progress:
+                        progress(f"excluded_closed_or_metadata_only: {year} · Redalyc · no_pdf_url · {record.medium} · {record.title[:70]}")
+                    continue
+                excluded, reason = contains_excluded_content(
+                    record.url,
+                    record.medium,
+                    record.title,
+                    record.text_clean,
+                    exclude_terms=scientific_exclude_terms,
+                    exclude_domains=clean_exclude_domains,
+                )
+                if excluded:
+                    if progress:
+                        progress(f"excluded: {year} · {record.medium} · {reason} · {record.title[:70]}")
+                    continue
+                relevant, relevance_reason = academic_topic_relevance(
+                    record.title,
+                    record.text_clean,
+                    query=query,
+                    variants=clean_variants,
+                )
+                if not relevant:
+                    if progress:
+                        progress(f"excluded: {year} · Redalyc · {relevance_reason} · {record.title[:70]}")
+                    continue
+                geo_ok, geo_reason = passes_geographic_filter(
+                    geographic_scope,
+                    clean_geographic_terms,
+                    record.url,
+                    record.medium,
+                    record.title,
+                    record.text_clean,
+                    country=record.country,
+                )
+                if not geo_ok:
+                    if progress:
+                        progress(f"excluded_geo: {year} · Redalyc · {geo_reason} · {record.title[:70]}")
+                    continue
+                if not can_accept_record(record.year, record.source_type):
+                    if progress:
+                        progress(f"cap_reached: {record.year} · {record.source_type} · max {max_records_per_source_type_year}/year/type")
+                    continue
+                if download_pdfs and record.pdf_url:
+                    pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
+                    record.pdf_file = pdf_file
+                    record.pdf_status = pdf_status
+                records.append(record)
+                if record_is_usable_for_analysis(record):
+                    mark_accepted_record(record.year, record.source_type)
+                try:
+                    save_incremental_record(output_dir, record)
+                    append_record_jsonl(output_dir, record)
+                    if len(records) % max(1, int(save_every)) == 0:
+                        save_outputs(output_dir, records, scan_existing=False)
+                except OSError as exc:
+                    if progress:
+                        progress(f"save warning: {exc}")
+                if progress:
+                    progress(f"{record.status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · len={record.text_length} · Redalyc · {record.medium} · {record.title[:80]}")
+                if interruptible_sleep(delay_seconds, stop_requested):
+                    if progress:
+                        progress("Stopped by user during Redalyc delay.")
+                    break
+
     try:
         save_outputs(output_dir, records, scan_existing=False)
     except OSError as exc:
@@ -2712,7 +2926,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--source-modes",
         default="gdelt_news",
-        help="Comma-separated engines: gdelt_news,google_news_rss,openalex_oa,crossref,forums. Forums use domain presets through GDELT.",
+        help="Comma-separated engines: gdelt_news,google_news_rss,openalex_oa,crossref,redalyc,forums. Forums use domain presets through GDELT.",
     )
     parser.add_argument("--start-year", type=int, required=True)
     parser.add_argument("--end-year", type=int, required=True)
