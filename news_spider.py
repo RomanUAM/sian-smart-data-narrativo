@@ -110,6 +110,7 @@ class NewsRecord:
     pdf_url: str = ""
     pdf_file: str = ""
     pdf_status: str = ""
+    source_weight_factor: float = 1.0
 
 
 MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
@@ -1056,9 +1057,17 @@ def load_seed_url_articles_from_path(path: Path) -> list[dict]:
             continue
         parsed_date = parse_seed_date(str(item.get("date") or item.get("fecha") or ""))
         if not parsed_date:
+            try:
+                seed_year = int(str(item.get("year") or item.get("anio") or "").strip()[:4])
+                parsed_date = dt.datetime(seed_year, 1, 1)
+            except (TypeError, ValueError):
+                parsed_date = None
+        if not parsed_date:
             continue
         source_type = str(item.get("source_type") or "news")
         medium = clean_text(str(item.get("medium") or item.get("medio") or infer_medium({}, url)))
+        pdf_url = clean_text(str(item.get("pdf_url") or item.get("pdf") or ""))
+        doi = clean_text(str(item.get("doi") or ""))
         rows.append(
             {
                 "url": url,
@@ -1071,6 +1080,12 @@ def load_seed_url_articles_from_path(path: Path) -> list[dict]:
                 "source_api": str(item.get("source_api") or "seed_url_list"),
                 "source_type_override": source_type,
                 "source_type_evidence_override": str(item.get("source_type_evidence") or "curated_seed_url"),
+                "pdf_url": pdf_url,
+                "doi": doi,
+                "abstract": clean_text(str(item.get("abstract") or item.get("resumen") or "")),
+                "authors": clean_text(str(item.get("authors") or item.get("autores") or "")),
+                "keywords": clean_text(str(item.get("keywords") or item.get("palabras") or "")),
+                "source_weight_factor": item.get("source_weight_factor", item.get("factor", "")),
             }
         )
     return rows
@@ -1991,7 +2006,7 @@ def crawl_news(
     periods = list(month_periods(start_year, end_year, start_month=start_month, end_month=end_month))
     gdelt_news_cooldown_until = 0
     gdelt_forums_cooldown_until = 0
-    run_indexed_news = any(mode in active_source_modes for mode in {"gdelt_news", "institutional_gdelt", "forums", "google_news_rss", "reddit_rss"})
+    run_indexed_news = bool(seed_url_articles) or any(mode in active_source_modes for mode in {"gdelt_news", "institutional_gdelt", "forums", "google_news_rss", "reddit_rss", "seed_urls"})
     if run_indexed_news:
         if progress:
             progress(f"Effective indexed query design: {effective_query[:500]}{'...' if len(effective_query) > 500 else ''}")
@@ -2295,10 +2310,17 @@ def crawl_news(
             evidence_level, evidence_weight = evidence_rank_for_source_type(source_type)
             language = str(article.get("language", ""))
             country = str(article.get("sourceCountry", ""))
+            try:
+                source_weight_factor = float(article.get("source_weight_factor") or 1.0)
+            except (TypeError, ValueError):
+                source_weight_factor = 1.0
             fetched_at = dt.datetime.now(dt.UTC).isoformat()
             rss_partial_text = clean_text(" ".join([
                 title,
                 str(article.get("rss_description") or ""),
+                str(article.get("abstract") or ""),
+                str(article.get("authors") or ""),
+                str(article.get("keywords") or ""),
             ]))
             metadata_partial_text = rss_partial_text or title
 
@@ -2434,7 +2456,13 @@ def crawl_news(
                 fetched_at=fetched_at,
                 status=status,
                 error=error,
+                pdf_url=str(article.get("pdf_url") or ""),
+                source_weight_factor=source_weight_factor,
             )
+            if download_pdfs and record.pdf_url:
+                pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url), timeout=10)
+                record.pdf_file = pdf_file
+                record.pdf_status = pdf_status
             records.append(record)
             if record_is_usable_for_analysis(record):
                 mark_accepted_record(record.year, record.source_type)

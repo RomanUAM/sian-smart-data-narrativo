@@ -5405,6 +5405,7 @@ with st.sidebar:
     output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
     default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
     default_forum_seed_path = APP_ROOT / "seed_sources" / "tatuaje_public_conversation_seed_urls.json"
+    default_academic_seed_path = APP_ROOT / "seed_sources" / "tatuaje_academic_seed_urls.json"
     use_seed_urls = st.checkbox(
         "Usar URLs semilla de noticias mexicanas",
         value=default_seed_path.exists() and "tatu" in query.lower(),
@@ -5429,6 +5430,20 @@ with st.sidebar:
         "Archivo JSON de URLs semilla conversacionales",
         value=str(default_forum_seed_path) if default_forum_seed_path.exists() else "",
         disabled=st.session_state.spider_running or not use_forum_seed_urls,
+    )
+    use_academic_seed_urls = st.checkbox(
+        "Usar semillas controladas de artículos científicos",
+        value=default_academic_seed_path.exists() and "tatu" in query.lower(),
+        help=(
+            "Procesa papers curados por DOI/URL/PDF. Este es el modo correcto para controlar Google Scholar manualmente: "
+            "copias títulos/DOI/PDF abiertos como semillas y el sistema descarga sólo lo permitido."
+        ),
+        disabled=st.session_state.spider_running,
+    )
+    academic_seed_url_file = st.text_input(
+        "Archivo JSON de semillas académicas",
+        value=str(default_academic_seed_path) if default_academic_seed_path.exists() else "",
+        disabled=st.session_state.spider_running or not use_academic_seed_urls,
     )
     seed_domains_preview = domains_from_seed_file(seed_url_file) if use_seed_urls and seed_url_file else []
     use_seed_domains_for_search = st.checkbox(
@@ -5605,6 +5620,7 @@ config = {
     "seed_url_files_by_source": {
         "news": seed_url_file if use_seed_urls and seed_url_file else "",
         "forums": forum_seed_url_file if use_forum_seed_urls and forum_seed_url_file else "",
+        "articles": academic_seed_url_file if use_academic_seed_urls and academic_seed_url_file else "",
     },
     "download_pdfs": False,
     "strict_open_access_articles": not bool(allow_metadata_only_articles),
@@ -5949,7 +5965,7 @@ if selected_source_run or run or run_sequential:
             academic_step["required_source_types"] = ["scientific_article"]
             academic_step["accept_source_types"] = ["scientific_article"]
             academic_step["target_min_per_source_type_year"] = int(target_min_per_type_year)
-            academic_step["seed_url_file"] = ""
+            academic_step["seed_url_file"] = config.get("seed_url_files_by_source", {}).get("articles", "")
             academic_step["source_collection"] = "articles_first"
             academic_step["target_source_type"] = "scientific_article"
             academic_step["variant_rubric"] = "mixed_layered"

@@ -1,0 +1,61 @@
+[
+  {
+    "source_type": "scientific_article",
+    "source_type_evidence": "curated_academic_seed_redalyc",
+    "source_api": "academic_seed_url_list",
+    "year": 2021,
+    "medium": "Interdisciplinaria",
+    "title": "Percepciones del tatuaje como expresión cultural en AMBA",
+    "url": "https://www.redalyc.org/articulo.oa?id=18065114015",
+    "pdf_url": "https://www.redalyc.org/journal/180/18065114015/18065114015.pdf",
+    "keywords": "tatuaje, cultura del tatuaje, expresión cultural, moda, prejuicios laborales",
+    "source_weight_factor": 1.0
+  },
+  {
+    "source_type": "scientific_article",
+    "source_type_evidence": "curated_academic_seed_redalyc",
+    "source_api": "academic_seed_url_list",
+    "year": 2021,
+    "medium": "Antrópica revista de ciencias sociales y humanidades",
+    "title": "Estigmas grises: cristianos evangélicos tatuados y su religiosidad en una comunidad religiosa",
+    "url": "https://www.redalyc.org/articulo.oa?id=723878165003",
+    "pdf_url": "https://www.redalyc.org/pdf/7238/723878165003.pdf",
+    "keywords": "tatuaje, estigma, religiosidad, cristianos evangélicos, cuerpo",
+    "source_weight_factor": 1.0
+  },
+  {
+    "source_type": "scientific_article",
+    "source_type_evidence": "curated_academic_seed_redalyc",
+    "source_api": "academic_seed_url_list",
+    "year": 2022,
+    "medium": "Psicumex",
+    "title": "Influencia del uso de tatuajes en la percepción de la retribución económica",
+    "url": "https://www.redalyc.org/articulo.oa?id=667873518008",
+    "pdf_url": "https://www.redalyc.org/journal/6678/667873518008/667873518008.pdf",
+    "keywords": "tatuajes, percepción, retribución económica, trabajo, estigma laboral",
+    "source_weight_factor": 1.0
+  },
+  {
+    "source_type": "scientific_article",
+    "source_type_evidence": "curated_academic_seed_redalyc",
+    "source_api": "academic_seed_url_list",
+    "year": 2022,
+    "medium": "Signos do Consumo",
+    "title": "Narrativas e biografia no corpo: tatuagem e o consumo de literatura",
+    "url": "https://www.redalyc.org/articulo.oa?id=350274028005",
+    "pdf_url": "https://www.redalyc.org/journal/3502/350274028005/350274028005.pdf",
+    "keywords": "tatuagem, narrativas, biografia, corpo, consumo cultural",
+    "source_weight_factor": 1.0
+  },
+  {
+    "source_type": "scientific_article",
+    "source_type_evidence": "curated_academic_seed_redalyc",
+    "source_api": "academic_seed_url_list",
+    "year": 2025,
+    "medium": "Athenea Digital. Revista de Pensamiento e Investigación Social",
+    "title": "Narrativas transformadoras: el valor del tatuaje terapéutico post-mastectomía",
+    "url": "https://doi.org/10.5565/rev/athenea.3684",
+    "keywords": "tatuaje terapéutico, narrativas transformadoras, cuerpo, post-mastectomía",
+    "source_weight_factor": 1.0
+  }
+]
