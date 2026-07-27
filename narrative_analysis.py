@@ -635,12 +635,25 @@ def compose_repeated_phrases(
     return sorted(rows, key=lambda row: (row["node_type"] == "absorbed_ngram", -row["count"], row["node"]))
 
 
+MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
+
+
+def record_has_usable_text(record: dict) -> bool:
+    status = str(record.get("status") or "")
+    text = str(record.get("text_normalized") or record.get("text_clean") or "")
+    if status == "ok":
+        return bool(text)
+    if status == "ok_partial":
+        try:
+            text_length = int(record.get("text_length") or 0)
+        except (TypeError, ValueError):
+            text_length = len(text)
+        return len(text) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS or text_length >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS
+    return False
+
+
 def usable_records(records: list[dict]) -> list[dict]:
-    return [
-        record for record in records
-        if record.get("status") in {"ok", "ok_partial", "too_short"}
-        and (record.get("text_normalized") or record.get("text_clean") or record.get("title"))
-    ]
+    return [record for record in records if record_has_usable_text(record)]
 
 
 def record_text(record: dict) -> str:

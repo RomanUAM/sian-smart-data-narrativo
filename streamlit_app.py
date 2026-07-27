@@ -137,7 +137,7 @@ def update_run_manifest(config: dict, status: str, rows: list[dict] | None = Non
             "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "status": status,
             "records_total": len(rows),
-            "records_usable": sum(1 for row in rows if row.get("status") in {"ok", "ok_partial"}),
+            "records_usable": sum(1 for row in rows if has_usable_text(row)),
             "records_by_source_type": dict(Counter(str(row.get("source_type") or "unknown") for row in rows)),
             "records_by_status": dict(Counter(str(row.get("status") or "unknown") for row in rows)),
             "records_hash": stable_json_hash(rows) if rows else "",
@@ -496,10 +496,28 @@ def row_evidence(row: dict) -> tuple[str, int]:
     return evidence_rank_for_source_type(row_source_type(row))
 
 
+MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
+
+
+def row_text_for_usability(row: dict) -> str:
+    return str(row.get("text_normalized") or row.get("text_clean") or "")
+
+
+def row_text_length_for_usability(row: dict) -> int:
+    try:
+        return int(row.get("text_length") or 0)
+    except (TypeError, ValueError):
+        return len(row_text_for_usability(row))
+
+
 def has_usable_text(row: dict) -> bool:
-    return row.get("status") in {"ok", "ok_partial", "too_short"} and bool(
-        row.get("text_normalized") or row.get("text_clean") or row.get("title")
-    )
+    status = str(row.get("status") or "")
+    text = row_text_for_usability(row)
+    if status == "ok":
+        return bool(text)
+    if status == "ok_partial":
+        return len(text) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS or row_text_length_for_usability(row) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS
+    return False
 
 
 def annual_news_coverage_rows(rows: list[dict], target_per_year: int = 100) -> list[dict]:
@@ -579,12 +597,20 @@ def live_balance_counts_from_logs(logs: list[str]) -> Counter:
     counts: Counter = Counter()
     for message in logs or []:
         text = str(message)
-        accepted = re.search(r"^(?:ok|ok_partial|too_short):\s*(\d{4})\s*·\s*([a-z_]+)\s+(\d+)/min", text)
+        accepted = re.search(r"^(ok|ok_partial|too_short):\s*(\d{4})\s*·\s*([a-z_]+)\s+(\d+)/min", text)
         if accepted:
-            year = int(accepted.group(1))
-            source_type = accepted.group(2)
-            count = int(accepted.group(3))
-            counts[(year, source_type)] = max(counts[(year, source_type)], count)
+            status_name = accepted.group(1)
+            year = int(accepted.group(2))
+            source_type = accepted.group(3)
+            count = int(accepted.group(4))
+            length_match = re.search(r"·\s*len=(\d+)\b", text)
+            length = int(length_match.group(1)) if length_match else None
+            if status_name == "ok" or (
+                status_name == "ok_partial"
+                and length is not None
+                and length >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS
+            ):
+                counts[(year, source_type)] = max(counts[(year, source_type)], count)
             continue
         status = re.search(r"balance_status:\s*(\d{4})-\d{2}\s*·\s*(.*)", text)
         if status:

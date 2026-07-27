@@ -111,6 +111,37 @@ class NewsRecord:
     pdf_status: str = ""
 
 
+MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
+
+
+def record_is_usable_for_analysis(record: NewsRecord) -> bool:
+    """True when a record has enough local text for narrative analysis.
+
+    `ok_partial` can be legitimate (abstracts, RSS summaries, public excerpts),
+    but metadata-only snippets of a few words must not advance balance targets.
+    """
+    if record.status == "ok":
+        return bool(record.text_clean or record.text_normalized)
+    if record.status == "ok_partial":
+        text = record.text_normalized or record.text_clean or ""
+        return len(text) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS or int(record.text_length or 0) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS
+    return False
+
+
+def row_is_usable_for_analysis(row: dict) -> bool:
+    status = str(row.get("status") or "")
+    text = str(row.get("text_normalized") or row.get("text_clean") or "")
+    if status == "ok":
+        return bool(text)
+    if status == "ok_partial":
+        try:
+            text_length = int(row.get("text_length") or 0)
+        except (TypeError, ValueError):
+            text_length = len(text)
+        return len(text) >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS or text_length >= MIN_PARTIAL_ANALYSIS_TEXT_CHARS
+    return False
+
+
 class VisibleTextParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -2227,7 +2258,7 @@ def crawl_news(
                 error=error,
             )
             records.append(record)
-            if record.status in {"ok", "ok_partial"}:
+            if record_is_usable_for_analysis(record):
                 mark_accepted_record(record.year, record.source_type)
             try:
                 save_incremental_record(output_dir, record)
@@ -2238,7 +2269,7 @@ def crawl_news(
                 if progress:
                     progress(f"save warning: {exc}")
             if progress:
-                progress(f"{status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · {medium} · {title[:80]}")
+                progress(f"{status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · len={record.text_length} · {medium} · {title[:80]}")
             if interruptible_sleep(delay_seconds, stop_requested):
                 if progress:
                     progress("Stopped by user during page delay.")
@@ -2351,7 +2382,7 @@ def crawl_news(
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
                 records.append(record)
-                if record.status in {"ok", "ok_partial"}:
+                if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
@@ -2362,7 +2393,7 @@ def crawl_news(
                     if progress:
                         progress(f"save warning: {exc}")
                 if progress:
-                    progress(f"{record.status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · OpenAlex · {record.medium} · {record.title[:80]}")
+                    progress(f"{record.status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · len={record.text_length} · OpenAlex · {record.medium} · {record.title[:80]}")
                 if interruptible_sleep(delay_seconds, stop_requested):
                     if progress:
                         progress("Stopped by user during OpenAlex delay.")
@@ -2452,7 +2483,7 @@ def crawl_news(
                     record.pdf_file = ""
                     record.pdf_status = "metadata_only_license_unverified"
                 records.append(record)
-                if record.status in {"ok", "ok_partial"}:
+                if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
@@ -2463,7 +2494,7 @@ def crawl_news(
                     if progress:
                         progress(f"save warning: {exc}")
                 if progress:
-                    progress(f"{record.status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · Crossref · {record.medium} · {record.title[:80]}")
+                    progress(f"{record.status}: {year} · {record.source_type} {balance_status(year, record.source_type)} · len={record.text_length} · Crossref · {record.medium} · {record.title[:80]}")
                 if interruptible_sleep(delay_seconds, stop_requested):
                     if progress:
                         progress("Stopped by user during Crossref delay.")
@@ -2545,7 +2576,7 @@ def write_cli_manifest(output_dir: Path, config: dict, records: list[NewsRecord]
         "config": config,
         "config_hash": stable_json_hash(config),
         "records_total": len(rows),
-        "records_usable": sum(1 for row in rows if row.get("status") in {"ok", "ok_partial"}),
+        "records_usable": sum(1 for row in rows if row_is_usable_for_analysis(row)),
         "records_by_source_type": {
             source_type: sum(1 for row in rows if str(row.get("source_type") or "unknown") == source_type)
             for source_type in sorted({str(row.get("source_type") or "unknown") for row in rows})
@@ -2671,7 +2702,7 @@ def main() -> None:
     except Exception as exc:  # noqa: BLE001
         write_cli_manifest(output_path, config, records, "error", str(exc))
         raise
-    usable = sum(1 for record in records if record.status in {"ok", "ok_partial"} and (record.text_clean or record.title))
+    usable = sum(1 for record in records if record_is_usable_for_analysis(record))
     partial = sum(1 for record in records if record.status == "ok_partial")
     print(f"Saved {len(records)} records ({usable} usable; {partial} partial RSS/metadata) in {args.output_dir}")
 
