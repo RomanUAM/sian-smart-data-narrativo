@@ -445,12 +445,17 @@ def robots_allowed(url: str) -> tuple[bool, str]:
     base = f"{parsed.scheme}://{parsed.netloc}"
     if base not in ROBOTS_CACHE:
         rp = urllib.robotparser.RobotFileParser()
-        rp.set_url(urllib.parse.urljoin(base, "/robots.txt"))
+        robots_url = urllib.parse.urljoin(base, "/robots.txt")
+        rp.set_url(robots_url)
         try:
-            rp.read()
+            req = urllib.request.Request(robots_url, headers={"User-Agent": USER_AGENT})
+            with open_url(req, timeout=6) as response:
+                robots_text = response.read(300_000).decode("utf-8", errors="replace")
+            rp.parse(robots_text.splitlines())
             ROBOTS_CACHE[base] = rp
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
             ROBOTS_CACHE[base] = None
+            return False, f"robots_unavailable_metadata_only:{type(exc).__name__}"
     rp = ROBOTS_CACHE.get(base)
     if rp is None:
         return False, "robots_unavailable_metadata_only"
@@ -2567,8 +2572,9 @@ def crawl_news(
                         progress(f"cap_reached: {record.year} · {record.source_type} · max {max_records_per_source_type_year}/year/type")
                     continue
                 if download_pdfs and record.pdf_url:
-                    record.pdf_file = ""
-                    record.pdf_status = "metadata_only_license_unverified"
+                    pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url))
+                    record.pdf_file = pdf_file
+                    record.pdf_status = pdf_status
                 records.append(record)
                 if record_is_usable_for_analysis(record):
                     mark_accepted_record(record.year, record.source_type)
