@@ -34,7 +34,7 @@ El sistema puede leerse como nueve fases interpretativas:
    marcos problema--culpable--solución--urgencia, ecos, deltas temporales y
    silencios definidos por el analista.
 6. **Diseccionar.** Se extraen proposiciones, actos de habla, causalidad,
-   premisas implícitas y señales heurísticas de falacia o desinformación. No
+   hipótesis de premisas implícitas y marcadores retóricos revisables. No
    son sentencias: son señales para revisión humana.
 7. **Relacionar.** Se construyen redes entre textos, actores, ideas, fuentes,
    años y momentos del relato. Esto muestra conexiones, no causalidades
@@ -225,8 +225,8 @@ El análisis no usa LLM ni servicios externos. Calcula localmente:
 - grupos de ideas;
 - Smart Data Nucleus: fuentes Pareto, frames, ecos, deltas y silencios;
 - disección estructural: sujeto-verbo-objeto, actos de habla, causalidad,
-  premisas implícitas, señales heurísticas de falacia y vectores de
-  desinformación;
+  hipótesis de premisas implícitas, marcadores retóricos revisables y señales
+  de presión narrativa;
 - trazabilidad técnica con hash por registro;
 - tonalidad léxica exploratoria;
 - red narrativa;
@@ -338,11 +338,11 @@ de cada método. Sobre ese frente se calculan:
 - spacing.
 
 El frente empírico ideal se construye como la unión factible no dominada de
-todos los métodos y todas las corridas. La app ejecuta al menos 10 corridas por
-método con semillas pareadas y el mismo número de evaluaciones de función
-objetivo. Después reporta promedio, mediana, moda redondeada, máximo, mínimo,
-varianza, intervalo bootstrap al 95% para la media y prueba de Wilcoxon pareada
-para cada métrica.
+todos los métodos y todas las corridas. Para comparación publicable se
+recomienda ejecutar al menos 10 corridas por método con semillas pareadas y el
+mismo número de evaluaciones de función objetivo. Después se reporta promedio,
+mediana, moda redondeada, máximo, mínimo, varianza, intervalo bootstrap al 95%
+para la media y prueba de Wilcoxon pareada para cada métrica.
 
 Métodos:
 

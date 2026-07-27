@@ -16,7 +16,15 @@ from news_spider import (  # noqa: E402
     passes_geographic_filter,
     write_cli_manifest,
 )
-from narrative_analysis import _cover_problem_data, _cover_result_from_ids, _evaluate_cover_solution  # noqa: E402
+from narrative_analysis import (  # noqa: E402
+    _cover_problem_data,
+    _cover_result_from_ids,
+    _evaluate_cover_solution,
+    frame_counts,
+    infer_domain_profile,
+    idea_group_counts,
+    idea_groups_for_records,
+)
 from source_profiles import source_access_policy  # noqa: E402
 from structural_narrative import technical_traceability_rows  # noqa: E402
 
@@ -107,6 +115,29 @@ class CoreBehaviorTests(unittest.TestCase):
             country="",
         )
         self.assertTrue(ok)
+
+    def test_tattoo_domain_uses_tattoo_frames_not_ai_software_frames(self) -> None:
+        rows = [
+            {
+                "query": "tatuaje",
+                "query_variants": ["tatuajes", "arte corporal"],
+                "title": "El tatuaje en México: memoria, identidad y regulación sanitaria",
+                "text_clean": "El tatuaje aparece como archivo corporal, oficio, estética y riesgo sanitario.",
+                "status": "ok",
+                "source_type": "news",
+                "year": 2020,
+            }
+        ]
+        self.assertEqual(infer_domain_profile(rows), "tattoo")
+        frames = {row["frame"] for row in frame_counts(rows)}
+        self.assertIn("bodily_archive_memory", frames)
+        self.assertIn("health_risk_sanitary_regulation", frames)
+        self.assertNotIn("productivity", frames)
+        groups = idea_groups_for_records(rows)
+        self.assertIn("bodily_memory_archive", groups)
+        self.assertNotIn("productivity_promise", groups)
+        counted_groups = {row["idea_group"] for row in idea_group_counts(rows)}
+        self.assertIn("bodily_memory_archive", counted_groups)
 
     def test_technical_traceability_rows_hashes_records(self) -> None:
         rows = technical_traceability_rows(

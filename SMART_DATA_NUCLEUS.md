@@ -103,8 +103,10 @@ extracción. El export SDN, sin embargo, privilegia:
 - alertas de silencio.
 
 No automatiza acceso a espacios privados, sesiones, CAPTCHAs ni paywalls. Para
-publicación se debe reportar la proporción `ok/ok_partial` y aclarar que las
-falacias o silencios son señales heurísticas sujetas a validación humana.
+publicación se debe reportar la proporción `ok/ok_partial` y aclarar que los
+marcadores retóricos o silencios son señales heurísticas sujetas a validación
+humana. Un silencio significa ausencia relativa dentro del corpus construido,
+no prueba automática de omisión intencional.
 
 ## Neo4j: ruta posterior, no requisito actual
 
@@ -118,4 +120,3 @@ pesada. La arquitectura está pensada para exportarse a Neo4j:
 
 Neo4j debe verse como siguiente fase de infraestructura, no como condición para
 que el prototipo funcione.
-

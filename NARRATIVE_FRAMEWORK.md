@@ -12,8 +12,8 @@ El sistema local ayuda a:
 - separar idioma, región, año y fuente;
 - extraer indicios narrativos;
 - extraer proposiciones, actos de habla, causalidades y premisas implícitas;
-- marcar señales heurísticas de falacia o desinformación que requieren revisión humana;
-- conservar trazabilidad técnica mediante hash por registro;
+- marcar señales retóricas revisables que requieren lectura humana;
+- conservar trazabilidad técnica mediante hash, URL y fecha por registro;
 - construir redes de relaciones;
 - sugerir nodos de entrada;
 - permitir validación humana.
@@ -43,8 +43,8 @@ The local system helps to:
 - separate language, region, year, and source;
 - extract narrative signals;
 - extract propositions, speech acts, causalities, and implicit premises;
-- flag heuristic fallacy or disinformation signals that require human review;
-- preserve chain of custody through record hashes;
+- flag revisable rhetorical signals that require human review;
+- preserve technical traceability through record hashes, URLs, and capture dates;
 - build relation networks;
 - suggest entry nodes;
 - enable human validation.

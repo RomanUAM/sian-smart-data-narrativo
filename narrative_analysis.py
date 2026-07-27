@@ -84,7 +84,7 @@ LATAM_TERMS = {
 }
 
 
-NARRATIVE_FRAMES = {
+AI_SOFTWARE_NARRATIVE_FRAMES = {
     "productivity": [
         "productivity", "productive", "efficiency", "faster", "speed", "time saving",
         "ahorro", "tiempo", "productividad", "eficiencia", "rapidez", "acelera",
@@ -122,6 +122,79 @@ NARRATIVE_FRAMES = {
         "reemplazar", "sustituir", "trabajo", "rol", "programador", "ingeniero", "habilidades",
     ],
 }
+
+TATTOO_NARRATIVE_FRAMES = {
+    "bodily_archive_memory": [
+        "memoria", "memory", "recuerdo", "remember", "duelo", "grief", "homenaje",
+        "tributo", "familia", "madre", "padre", "hijo", "hija", "vida", "historia",
+        "archivo corporal", "marca", "cicatriz", "cuerpo", "body",
+    ],
+    "aesthetic_design_art": [
+        "arte", "art", "artistico", "artístico", "estetica", "estética", "diseño",
+        "design", "estilo", "style", "ilustracion", "ilustración", "lienzo",
+        "visual", "barberia", "barbería", "estudio", "studio",
+    ],
+    "craft_work_profession": [
+        "oficio", "trabajo", "profesion", "profesión", "tatuador", "tatuadora",
+        "tattoo artist", "artista del tatuaje", "cliente", "client", "negocio",
+        "business", "estudio de tatuajes", "tattoo studio",
+    ],
+    "identity_belonging_youth": [
+        "identidad", "identity", "pertenencia", "belonging", "juventud", "joven",
+        "jovenes", "jóvenes", "genero", "género", "feminista", "religioso",
+        "ritual", "prehispanico", "prehispánico", "mexicano", "mexicana",
+    ],
+    "health_risk_sanitary_regulation": [
+        "salud", "health", "riesgo", "risk", "infeccion", "infección", "infection",
+        "alergia", "allergy", "tinta", "tintas", "ink", "cofepris", "sanitario",
+        "sanitaria", "regulacion", "regulación", "maquillaje permanente",
+    ],
+    "stigma_discrimination_workplace": [
+        "estigma", "stigma", "prejuicio", "prejudice", "discriminacion",
+        "discriminación", "empleo", "trabajo", "laboral", "rechazo", "aceptacion",
+        "aceptación", "clandestinidad", "clandestino", "clandestina",
+    ],
+    "media_visibility_pop_culture": [
+        "redes", "sociales", "celebridad", "celebrity", "famoso", "famosa",
+        "nodal", "messi", "viral", "instagram", "tiktok", "fans", "musica",
+        "música", "deporte", "television", "televisión",
+    ],
+}
+
+NARRATIVE_FRAMES = AI_SOFTWARE_NARRATIVE_FRAMES
+
+
+def infer_domain_profile(records: list[dict]) -> str:
+    haystack = " ".join(
+        str(part or "")
+        for record in records[:200]
+        for part in [
+            record.get("query"),
+            " ".join(str(item) for item in record.get("query_variants", []) if item),
+            record.get("title"),
+        ]
+    )
+    normalized = normalize_token_text(haystack)
+    if any(term in normalized for term in ["tatuaje", "tatuajes", "tattoo", "tattoos", "arte corporal", "body art"]):
+        return "tattoo"
+    if any(term in normalized for term in ["software", "programador", "coding", "copilot", "developer", "inteligencia artificial"]):
+        return "ai_software"
+    return "generic"
+
+
+def narrative_frames_for_records(records: list[dict]) -> dict[str, list[str]]:
+    profile = infer_domain_profile(records)
+    if profile == "tattoo":
+        return TATTOO_NARRATIVE_FRAMES
+    if profile == "ai_software":
+        return AI_SOFTWARE_NARRATIVE_FRAMES
+    return {
+        "problem_conflict": ["problema", "conflict", "conflicto", "riesgo", "risk", "tension", "tensión"],
+        "actor_authority": ["autoridad", "authority", "gobierno", "government", "expert", "experto"],
+        "solution_response": ["solucion", "solución", "solution", "respuesta", "response", "medida", "policy"],
+        "identity_meaning": ["identidad", "identity", "sentido", "meaning", "memoria", "memory", "cultura", "culture"],
+        "change_consequence": ["cambio", "change", "consecuencia", "consequence", "impacto", "impact"],
+    }
 
 NARRATIVE_EVENT_PATTERNS = {
     "initial_event": [
@@ -182,7 +255,7 @@ ACTOR_NOISE_PHRASES = {
 
 ALLOWED_SHORT_ACTORS = {"ai", "ia", "ux", "uam", "unam", "ipn", "hcv", "hiv", "who", "oms"}
 
-IDEA_GROUPS = {
+AI_SOFTWARE_IDEA_GROUPS = {
     "productivity_promise": [
         "productivity", "productive", "efficiency", "faster", "speed", "time saving",
         "productividad", "eficiencia", "rapidez", "ahorro", "tiempo", "acelera",
@@ -220,6 +293,54 @@ IDEA_GROUPS = {
         "reemplazar", "sustituir", "trabajo", "rol", "programador", "ingeniero", "habilidades",
     ],
 }
+
+TATTOO_IDEA_GROUPS = {
+    "bodily_memory_archive": [
+        "memoria", "recuerdo", "duelo", "homenaje", "tributo", "cicatriz",
+        "archivo corporal", "historia personal", "marca corporal", "memory", "grief",
+    ],
+    "aesthetic_design_art": [
+        "arte", "artistico", "artístico", "estetica", "estética", "diseño",
+        "ilustracion", "ilustración", "lienzo", "visual", "body art", "design",
+    ],
+    "craft_profession_studio": [
+        "tatuador", "tatuadora", "oficio", "estudio", "cliente", "negocio",
+        "profesion", "profesión", "barberia", "barbería", "tattoo artist", "studio",
+    ],
+    "identity_belonging_culture": [
+        "identidad", "pertenencia", "cultura", "juventud", "genero", "género",
+        "ritual", "prehispanico", "prehispánico", "mexicano", "mexicana", "identity",
+    ],
+    "health_risk_regulation": [
+        "salud", "riesgo", "infeccion", "infección", "alergia", "tinta", "tintas",
+        "cofepris", "sanitario", "sanitaria", "regulacion", "regulación", "maquillaje permanente",
+    ],
+    "stigma_discrimination_work": [
+        "estigma", "prejuicio", "discriminacion", "discriminación", "empleo",
+        "laboral", "rechazo", "aceptacion", "aceptación", "clandestinidad",
+    ],
+    "media_pop_visibility": [
+        "redes", "viral", "celebridad", "famoso", "famosa", "nodal", "messi",
+        "instagram", "tiktok", "fans", "musica", "música", "deporte",
+    ],
+}
+
+IDEA_GROUPS = AI_SOFTWARE_IDEA_GROUPS
+
+
+def idea_groups_for_records(records: list[dict]) -> dict[str, list[str]]:
+    profile = infer_domain_profile(records)
+    if profile == "tattoo":
+        return TATTOO_IDEA_GROUPS
+    if profile == "ai_software":
+        return AI_SOFTWARE_IDEA_GROUPS
+    return {
+        "problem_conflict": ["problema", "conflicto", "riesgo", "tension", "tensión"],
+        "actor_authority": ["actor", "autoridad", "gobierno", "experto", "fuente"],
+        "solution_response": ["solucion", "solución", "respuesta", "medida", "politica", "política"],
+        "identity_meaning": ["identidad", "sentido", "memoria", "cultura", "experiencia"],
+        "change_consequence": ["cambio", "consecuencia", "impacto", "efecto", "deriva"],
+    }
 
 LP_REFERENCE_CACHE: dict[tuple, dict] = {}
 LP_SEED_CACHE: dict[tuple, dict] = {}
@@ -589,9 +710,10 @@ def narrative_flow_stage(source_type: str) -> dict:
     mapping = {
         "forum": (1, "individual_dialogue"),
         "news": (2, "news_media"),
-        "industry_report": (3, "technical_or_institutional_derivation"),
-        "scientific_article": (4, "research"),
-        "other": (5, "other_or_unclear_derivation"),
+        "institutional_report": (3, "institutional_authority"),
+        "industry_report": (4, "technical_or_industry_derivation"),
+        "scientific_article": (5, "research"),
+        "other": (6, "other_or_unclear_derivation"),
     }
     order, label = mapping.get(source_type, mapping["other"])
     return {"narrative_flow_order": order, "narrative_flow_stage": label}
@@ -717,7 +839,7 @@ def top_mixed_ngrams(
 def frame_counts(records: list[dict]) -> list[dict]:
     total_docs = max(1, len(records))
     rows = []
-    for frame, keywords in NARRATIVE_FRAMES.items():
+    for frame, keywords in narrative_frames_for_records(records).items():
         keyword_hits = 0
         doc_hits = 0
         matched_terms = Counter()
@@ -2689,8 +2811,8 @@ def musical_composition_weighted_node_cover(
     )
 
 
-def parse_idea_groups(text: str) -> dict[str, list[str]]:
-    groups = {key: list(values) for key, values in IDEA_GROUPS.items()}
+def parse_idea_groups(text: str, base_groups: dict[str, list[str]] | None = None) -> dict[str, list[str]]:
+    groups = {key: list(values) for key, values in (base_groups or IDEA_GROUPS).items()}
     for raw_line in (text or "").splitlines():
         line = raw_line.strip()
         if not line or ":" not in line:
@@ -2704,7 +2826,7 @@ def parse_idea_groups(text: str) -> dict[str, list[str]]:
 
 
 def idea_group_counts(records: list[dict], groups: dict[str, list[str]] | None = None) -> list[dict]:
-    groups = groups or IDEA_GROUPS
+    groups = groups or idea_groups_for_records(records)
     total_docs = max(1, len(records))
     rows = []
     for group, keywords in groups.items():
@@ -2748,7 +2870,7 @@ def idea_group_counts_by_year(records: list[dict], groups: dict[str, list[str]] 
 
 
 def idea_group_document_matrix(records: list[dict], groups: dict[str, list[str]] | None = None) -> list[dict]:
-    groups = groups or IDEA_GROUPS
+    groups = groups or idea_groups_for_records(records)
     rows = []
     for index, record in enumerate(records, start=1):
         text = record_text(record).lower()

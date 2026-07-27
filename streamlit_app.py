@@ -30,6 +30,7 @@ from narrative_analysis import (
     filter_records,
     frame_counts,
     frame_counts_by_year,
+    idea_groups_for_records,
     idea_group_counts,
     idea_group_counts_by_year,
     idea_group_document_matrix,
@@ -555,6 +556,95 @@ def annual_source_type_coverage_rows(
     return output
 
 
+def source_type_targets_from_config(config: dict, fallback_min: int, fallback_max: int) -> dict[str, dict]:
+    configured = config.get("target_min_by_source_type") or {}
+    source_types = ["news", "forum", "institutional_report", "scientific_article", "industry_report", "other"]
+    targets = {}
+    for source_type in source_types:
+        targets[source_type] = {
+            "target_min": int(configured.get(source_type, fallback_min) if isinstance(configured, dict) else fallback_min),
+            "target_max": int(config.get("max_records_per_source_type_year", fallback_max) or fallback_max),
+        }
+    return targets
+
+
+def source_status_rows(rows: list[dict], config: dict | None = None) -> list[dict]:
+    config = config or {}
+    fallback_max = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
+    fallback_min = int(config.get("target_min_per_source_type_year", 0) or 0)
+    targets = source_type_targets_from_config(config, fallback_min, fallback_max)
+    grouped: dict[tuple[int, str, str], list[dict]] = defaultdict(list)
+    for row in rows:
+        if not str(row.get("year", "")).isdigit():
+            continue
+        grouped[(int(row.get("year")), row_source_type(row), row.get("medium") or "unknown")].append(row)
+    output = []
+    for (year, source_type, medium), group in sorted(grouped.items()):
+        statuses = Counter(str(row.get("status") or "unknown") for row in group)
+        usable = sum(1 for row in group if has_usable_text(row))
+        target = targets.get(source_type, {"target_min": fallback_min, "target_max": fallback_max})
+        output.append(
+            {
+                "year": year,
+                "source_type": source_type,
+                "medium": medium,
+                "usable": usable,
+                "ok": statuses.get("ok", 0),
+                "ok_partial": statuses.get("ok_partial", 0),
+                "too_short": statuses.get("too_short", 0),
+                "fetch_error": statuses.get("fetch_error", 0),
+                "error": statuses.get("error", 0),
+                "target_min": target["target_min"],
+                "gap_to_min": max(0, int(target["target_min"]) - usable),
+                "target_max": target["target_max"],
+                "cap_remaining": max(0, int(target["target_max"]) - usable),
+                "source_api": ", ".join(sorted({str(row.get("source_api") or "") for row in group if row.get("source_api")})),
+                "last_error": next((str(row.get("error") or "") for row in reversed(group) if row.get("error")), ""),
+            }
+        )
+    return output
+
+
+def render_source_status_dashboard(rows: list[dict], config: dict | None = None) -> None:
+    status_rows = source_status_rows(rows, config)
+    if not status_rows:
+        return
+    st.subheader("Estado operacional por fuente, año y tipo")
+    st.caption(
+        "Esta tabla convierte los logs de ejecución en estado auditable. "
+        "`gap_to_min` muestra qué capas no alcanzaron la muestra mínima configurada."
+    )
+    by_type_year: dict[tuple[int, str], dict] = {}
+    for row in status_rows:
+        key = (row["year"], row["source_type"])
+        if key not in by_type_year:
+            by_type_year[key] = {
+                "year": row["year"],
+                "source_type": row["source_type"],
+                "usable": 0,
+                "ok": 0,
+                "ok_partial": 0,
+                "too_short": 0,
+                "fetch_error": 0,
+                "error": 0,
+                "target_min": row["target_min"],
+                "target_max": row["target_max"],
+            }
+        target = by_type_year[key]
+        for field in ["usable", "ok", "ok_partial", "too_short", "fetch_error", "error"]:
+            target[field] += int(row.get(field, 0) or 0)
+    summary_rows = []
+    for row in by_type_year.values():
+        row["gap_to_min"] = max(0, int(row["target_min"]) - int(row["usable"]))
+        row["cap_remaining"] = max(0, int(row["target_max"]) - int(row["usable"]))
+        row["status"] = "ok" if row["gap_to_min"] == 0 else "under_target"
+        summary_rows.append(row)
+    summary_rows = sorted(summary_rows, key=lambda item: (item["year"], item["source_type"]))
+    st.dataframe(summary_rows, use_container_width=True)
+    with st.expander("Detalle por medio"):
+        st.dataframe(status_rows, use_container_width=True)
+
+
 def corpus_social_balance_diagnostic(rows: list[dict]) -> dict:
     usable_rows = [row for row in rows if has_usable_text(row)]
     counts = Counter(row_source_type(row) for row in usable_rows)
@@ -883,6 +973,168 @@ def render_corpus_distribution(rows: list[dict]) -> None:
     st.dataframe(evidence_rows, use_container_width=True)
 
 
+def narrative_core_metrics(records: list[dict], event_rows: list[dict], extra_stopwords: list[str]) -> dict:
+    source_types = Counter(row_source_type(row) for row in records)
+    years = {int(row.get("year")) for row in records if str(row.get("year", "")).isdigit()}
+    media = {row.get("medium") or "unknown" for row in records}
+    actors = actor_counts(event_rows, top_n=500)
+    stage_hits = sum(
+        1
+        for row in event_rows
+        for stage in ["initial_event", "conflict", "turning_point", "resolution", "consequences"]
+        if row.get(stage)
+    )
+    thematic_relations = (
+        len(top_ngrams(records, n=2, top_n=500, min_count=2, extra_stopwords=extra_stopwords))
+        + len(top_ngrams(records, n=3, top_n=500, min_count=2, extra_stopwords=extra_stopwords))
+    )
+    return {
+        "documents": len(records),
+        "news": source_types.get("news", 0),
+        "forums": source_types.get("forum", 0),
+        "scientific_articles": source_types.get("scientific_article", 0),
+        "institutional_reports": source_types.get("institutional_report", 0),
+        "actors": len(actors),
+        "events_or_stages": stage_hits,
+        "thematic_relations": thematic_relations,
+        "sources": len(media),
+        "temporal_markers": len(years),
+    }
+
+
+def narrative_timeline_rows(records: list[dict], event_rows: list[dict], extra_stopwords: list[str]) -> list[dict]:
+    event_by_key = {row.get("doc_key"): row for row in event_rows}
+    grouped: dict[tuple[int, str], list[dict]] = defaultdict(list)
+    for row in records:
+        if not str(row.get("year", "")).isdigit():
+            continue
+        grouped[(int(row.get("year")), row_source_type(row))].append(row)
+    timeline = []
+    for (year, source_type), rows in sorted(grouped.items()):
+        texts = " ".join((row.get("text_normalized") or row.get("text_clean") or row.get("title") or "") for row in rows)
+        top_terms_row = top_terms(rows, top_n=5, extra_stopwords=extra_stopwords)
+        related_events = [event_by_key.get(row.get("url") or f"{row.get('year')}|{row.get('medium')}|{row.get('title')}") for row in rows]
+        related_events = [row for row in related_events if row]
+        timeline.append(
+            {
+                "year": year,
+                "source_type": source_type,
+                "documents": len(rows),
+                "sources": len({row.get("medium") or "unknown" for row in rows}),
+                "top_terms": ", ".join(row["term"] for row in top_terms_row),
+                "conflict_docs": sum(1 for row in related_events if row.get("conflict")),
+                "change_docs": sum(1 for row in related_events if row.get("turning_point")),
+                "consequence_docs": sum(1 for row in related_events if row.get("consequences")),
+                "mean_text_length": round(sum(len(row.get("text_normalized") or row.get("text_clean") or "") for row in rows) / max(1, len(rows)), 1),
+            }
+        )
+    return timeline
+
+
+def local_query_rows(records: list[dict], query_text: str, extra_stopwords: list[str], limit: int = 30) -> list[dict]:
+    query_tokens = tokenize(query_text, extra_stopwords)
+    if not query_tokens:
+        return []
+    scored = []
+    for row in records:
+        text = " ".join(
+            str(part or "")
+            for part in [row.get("title", ""), row.get("medium", ""), row.get("text_normalized") or row.get("text_clean") or ""]
+        )
+        tokens = tokenize(text, extra_stopwords)
+        if not tokens:
+            continue
+        counts = Counter(tokens)
+        score = sum(counts.get(token, 0) for token in query_tokens)
+        phrase_bonus = 3 if normalize_local(query_text) in normalize_local(text) else 0
+        if score or phrase_bonus:
+            scored.append(
+                {
+                    "score": score + phrase_bonus,
+                    "year": row.get("year"),
+                    "source_type": row_source_type(row),
+                    "medium": row.get("medium") or "unknown",
+                    "title": row.get("title", ""),
+                    "status": row.get("status", ""),
+                    "url": row.get("url", ""),
+                    "preview": (row.get("text_normalized") or row.get("text_clean") or "")[:420],
+                }
+            )
+    return sorted(scored, key=lambda item: (-item["score"], item.get("year") or 0, item.get("medium") or ""))[:limit]
+
+
+def render_narrative_core_dashboard(records: list[dict], event_rows: list[dict], extra_stopwords: list[str]) -> None:
+    st.subheader("Núcleo integrado de exploración narrativa")
+    st.caption(
+        "Esta vista une extracción, clasificación, eventos, fuentes, relaciones temáticas y tiempo. "
+        "Si una capa aparece en cero, no es un problema de gráfica: es una limitación real del corpus."
+    )
+    metrics = narrative_core_metrics(records, event_rows, extra_stopwords)
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Documentos", metrics["documents"])
+    metric_cols[1].metric("Noticias", metrics["news"])
+    metric_cols[2].metric("Foros/expresión ciudadana", metrics["forums"])
+    metric_cols[3].metric("Artículos científicos", metrics["scientific_articles"])
+    metric_cols[4].metric("Gobierno/institucional", metrics["institutional_reports"])
+    metric_cols = st.columns(5)
+    metric_cols[0].metric("Entidades/actores", metrics["actors"])
+    metric_cols[1].metric("Eventos/etapas", metrics["events_or_stages"])
+    metric_cols[2].metric("Relaciones temáticas", metrics["thematic_relations"])
+    metric_cols[3].metric("Fuentes", metrics["sources"])
+    metric_cols[4].metric("Marcadores temporales", metrics["temporal_markers"])
+
+    if metrics["forums"] == 0:
+        st.error(
+            "Capa ciudadana ausente: no hay foros/blogs/conversaciones públicas usables. "
+            "El sistema puede analizar discurso periodístico o científico, pero no inferir narrativa social completa."
+        )
+    if metrics["news"] == 0:
+        st.warning("Capa periodística ausente: falta el puente público entre conversación social e investigación/institución.")
+
+    st.markdown("Línea de tiempo interactiva por tipo de fuente")
+    timeline = narrative_timeline_rows(records, event_rows, extra_stopwords)
+    if timeline:
+        st.vega_lite_chart(
+            timeline,
+            {
+                "mark": {"type": "line", "point": True, "tooltip": True},
+                "encoding": {
+                    "x": {"field": "year", "type": "ordinal", "title": "Año"},
+                    "y": {"field": "documents", "type": "quantitative", "title": "Documentos"},
+                    "color": {"field": "source_type", "type": "nominal", "title": "Tipo de fuente"},
+                    "tooltip": [
+                        {"field": "year", "type": "ordinal"},
+                        {"field": "source_type", "type": "nominal"},
+                        {"field": "documents", "type": "quantitative"},
+                        {"field": "sources", "type": "quantitative"},
+                        {"field": "top_terms", "type": "nominal"},
+                        {"field": "conflict_docs", "type": "quantitative"},
+                        {"field": "change_docs", "type": "quantitative"},
+                        {"field": "consequence_docs", "type": "quantitative"},
+                    ],
+                },
+            },
+            use_container_width=True,
+        )
+        with st.expander("Tabla de línea de tiempo: fuentes, términos y etapas"):
+            st.dataframe(timeline, use_container_width=True)
+
+    st.markdown("Consulta local en lenguaje natural")
+    query_text = st.text_input(
+        "Pregunta o concepto a buscar dentro del corpus",
+        value="",
+        placeholder="Ejemplo: discriminación laboral por tatuajes, riesgo sanitario, identidad juvenil...",
+        help="Búsqueda local por términos normalizados; no usa LLM ni sale de tu computadora.",
+        key="local_narrative_query",
+    )
+    if query_text.strip():
+        matches = local_query_rows(records, query_text, extra_stopwords)
+        if matches:
+            st.dataframe(matches, use_container_width=True)
+        else:
+            st.info("No hubo coincidencias locales con esa consulta. Prueba sinónimos o revisa si esa capa existe en el corpus.")
+
+
 def render_source_type_method_note() -> None:
     with st.expander("Criterio de clasificación de fuentes"):
         st.markdown(
@@ -923,6 +1175,7 @@ def render_results(rows: list[dict]) -> None:
         return
 
     render_corpus_distribution(rows)
+    render_source_status_dashboard(rows, config=st.session_state.get("spider_config", {}))
     render_source_type_method_note()
     balance = corpus_social_balance_diagnostic(rows)
     st.subheader("Diagnóstico de balance social del corpus")
@@ -1093,6 +1346,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "Este corpus NO sirve para análisis social de narrativa. "
             "Está dominado por artículos científicos y faltan capas de noticias/foros."
         )
+    render_source_status_dashboard(rows, config=st.session_state.get("spider_config", {}))
 
     config = st.session_state.get("spider_config", {})
     max_per_type = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
@@ -1268,15 +1522,17 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         st.warning("Los filtros dejaron el corpus vacío.")
         return
 
-    default_group_text = """productivity_promise: productivity, eficiencia, rapidez, ahorro, tiempo
-human_supervision: supervision, supervisión, review, revisión, validar, verificación
-errors_correction_maintenance: errors, errores, bugs, corrección, mantenimiento
-security_risk: security, seguridad, risk, riesgo, vulnerability, vulnerabilidad
-architecture_design: architecture, arquitectura, design, diseño, technical debt, deuda técnica
-requirements_problem_framing: requirements, requisitos, especificación, necesidades
-ux_users: ux, user experience, experiencia de usuario, usabilidad
-trust_accuracy: trust, confianza, accuracy, precisión, reliability, confiabilidad
-labor_role_skills: developer, programador, engineer, ingeniero, skills, habilidades, replace, reemplazar"""
+    core_event_rows = apply_actor_validations(
+        extract_narrative_events(selected_records, extra_stopwords=extra_stopwords),
+        load_actor_validations(actor_validation_path(analysis_path)),
+    )
+    render_narrative_core_dashboard(selected_records, core_event_rows, extra_stopwords)
+
+    default_groups = idea_groups_for_records(selected_records)
+    default_group_text = "\n".join(
+        f"{name}: {', '.join(terms)}"
+        for name, terms in default_groups.items()
+    )
 
     analysis_tabs = st.tabs([
         "Geolocalización",
@@ -1864,7 +2120,7 @@ normalizado aproximado por Monte Carlo determinístico.
                         "nodes_ratio": item["stats"].get("nodes_ratio"),
                         "node_weight_ratio": item["stats"].get("node_weight_ratio"),
                         "removed_edge_weight_ratio": item["stats"].get("removed_edge_weight_ratio"),
-                        "covered_weight_share": item["stats"].get("covered_weight_share"),
+                        "preserved_weight_share": item["stats"].get("preserved_weight_share"),
                         "hypervolume": item["stats"].get("hypervolume"),
                         "objective_value": item["stats"].get("objective_value"),
                     }
@@ -2338,7 +2594,8 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         )
         suggested_adaptive_groups = adaptive_topic_groups_from_graph(suggested_group_graph)
         suggested_group_text = adaptive_groups_to_dictionary_text(suggested_adaptive_groups)
-        if not st.session_state.idea_group_text:
+        inherited_ai_dictionary = "productivity_promise:" in st.session_state.idea_group_text and "productivity_promise" not in default_groups
+        if not st.session_state.idea_group_text or inherited_ai_dictionary:
             st.session_state.idea_group_text = suggested_group_text or default_group_text
         c_auto, c_reset = st.columns(2)
         if c_auto.button("Usar grupos centrales del grafo"):
@@ -2357,7 +2614,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             height=220,
         )
         st.session_state.idea_group_text = group_text
-        groups = parse_idea_groups(group_text)
+        groups = parse_idea_groups(group_text, base_groups=default_groups)
         group_rows = idea_group_counts(selected_records, groups)
         group_year_rows = idea_group_counts_by_year(selected_records, groups)
         matrix_rows = idea_group_document_matrix(selected_records, groups)
@@ -2781,7 +3038,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.caption(
             "Esta capa no afirma verdad judicial ni psicológica. Produce indicadores locales: "
             "proposiciones sujeto-verbo-objeto, actos de habla, causalidad, premisas implícitas, "
-            "señales heurísticas de falacia o desinformación, entropía narrativa y trazabilidad técnica."
+            "marcadores retóricos revisables, entropía narrativa y trazabilidad técnica."
         )
         sd1, sd2 = st.columns(2)
         max_sentences_per_doc = sd1.slider("Máximo de oraciones por documento", 5, 120, 40, step=5)
@@ -2809,9 +3066,9 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         dm1, dm2, dm3, dm4, dm5 = st.columns(5)
         dm1.metric("Proposiciones", total_props)
         dm2.metric("Causalidad", causal_props)
-        dm3.metric("Falacias/señales", fallacy_props)
-        dm4.metric("Vectores desinfo.", vector_props)
-        dm5.metric("Premisas ocultas", hidden_premises)
+        dm3.metric("Marcadores retóricos", fallacy_props)
+        dm4.metric("Presión narrativa", vector_props)
+        dm5.metric("Hipótesis implícitas", hidden_premises)
 
         st.markdown("Smart Data Nucleus: poda inteligente")
         st.caption(
@@ -2869,7 +3126,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
 
         st.markdown("Proposiciones estructurales")
         st.caption(
-            "SVO y falacias son heurísticas locales. Deben validarse: sirven como lupa de auditoría, "
+            "SVO y marcadores retóricos son heurísticas locales. Deben validarse: sirven como lupa de auditoría, "
             "no como sentencia automática."
         )
         st.dataframe(structural_rows, use_container_width=True)
@@ -3006,7 +3263,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             narrative_graph,
             objective="maximize_node_minimize_edge",
         )
-        groups = parse_idea_groups(default_group_text)
+        groups = parse_idea_groups(default_group_text, base_groups=default_groups)
         group_rows = idea_group_counts(selected_records, groups)
         group_matrix = idea_group_document_matrix(selected_records, groups)
         network = build_cooccurrence_network(selected_records, extra_stopwords=extra_stopwords)
@@ -3771,7 +4028,7 @@ def cover_comparison_rows(covers: list[dict]) -> list[dict]:
                 "node_weight_ratio": stats.get("node_weight_ratio"),
                 "removed_edge_weight_ratio": stats.get("removed_edge_weight_ratio"),
                 "removed_edge_weight": stats.get("removed_edge_weight"),
-                "covered_weight_share": stats.get("covered_weight_share"),
+                "preserved_weight_share": stats.get("preserved_weight_share"),
                 "hypervolume": stats.get("hypervolume"),
                 "pareto_solutions": stats.get("pareto_solutions"),
                 "best_pareto_node_weight_ratio": max(
@@ -5096,6 +5353,14 @@ config = {
     "target_min_per_source_type_year": int(target_min_per_type_year),
     "target_min_news_per_year": int(min_news_per_year),
     "target_min_forums_per_year": int(min_forums_per_year),
+    "target_min_by_source_type": {
+        "news": int(min_news_per_year),
+        "forum": int(min_forums_per_year),
+        "institutional_report": int(target_min_per_type_year),
+        "scientific_article": int(target_min_per_type_year),
+        "industry_report": int(target_min_per_type_year),
+        "other": int(target_min_per_type_year),
+    },
     "max_records_per_source_type_year": max(int(max_records_per_type_year), int(min_news_per_year), int(min_forums_per_year)),
     "required_source_types": [],
     "accept_source_types": [],
@@ -5466,7 +5731,7 @@ Notas metodológicas:
 - Algunos medios bloquean arañas, usan paywall o entregan páginas muy cortas; esos casos se guardan como `fetch_error`, `too_short` u `ok_partial`.
 - El sistema distingue texto completo de señal parcial: una URL indexada no equivale a evidencia textual plena.
 - La pestaña de análisis trabaja localmente sobre JSON/JSONL ya guardados. No usa modelos externos.
-- Las señales de falacia, desinformación o silencios son heurísticas de auditoría; requieren validación humana.
+- Los marcadores retóricos, señales de presión narrativa y ausencias relativas son heurísticas de auditoría; requieren validación humana.
 - Neo4j/FastAPI/PostgreSQL son ruta futura de escalamiento; el prototipo actual opera con Streamlit, JSON y CSV.
 - El botón **Parar araña** detiene la corrida al terminar la llamada de red o la espera actual; no borra lo ya guardado.
 """

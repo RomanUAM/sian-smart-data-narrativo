@@ -11,10 +11,10 @@ La pregunta robusta no es “qué palabras aparecen”, sino:
 
 - quién afirma, promete, ordena, acusa o declara;
 - qué relación causal se propone;
-- qué premisa queda sin decir;
+- qué hipótesis de premisa queda sin decir;
 - qué actores ganan centralidad;
 - qué fuentes amplifican o estabilizan una formulación;
-- qué señales de falacia o desinformación requieren revisión humana;
+- qué marcadores retóricos requieren revisión humana;
 - cómo cambia la estructura narrativa a través del tiempo.
 
 ## Trinidad de validación
@@ -53,8 +53,8 @@ Entregables mínimos:
 
 - diccionario de relaciones;
 - revisión de actores;
-- validación de premisas ocultas;
-- descarte de señales falsas de falacia;
+- validación de hipótesis implícitas;
+- descarte de marcadores retóricos falsos;
 - lectura cercana de fragmentos clave;
 - decisión sobre qué puede publicarse.
 
@@ -77,7 +77,7 @@ Acción:
 - guardar estado de evidencia;
 - generar hash de integridad.
 
-### 2. Desarmador estructural
+### 2. Segmentación estructural
 
 Entrada: texto limpio.
 
@@ -92,15 +92,15 @@ Acción:
   - expresiva;
   - declarativa;
 - detectar causalidad;
-- proponer premisa oculta.
+- proponer hipótesis de premisa implícita.
 
-### 3. Juez heurístico
+### 3. Marcación retórica revisable
 
 Entrada: proposiciones.
 
 Acción:
 
-- marcar señales de falacia:
+- marcar señales argumentales revisables:
   - ad hominem;
   - falsa causa;
   - pendiente resbaladiza;
@@ -108,7 +108,7 @@ Acción:
   - apelación al miedo;
   - generalización apresurada;
   - apelación a autoridad;
-- marcar vectores de desinformación:
+- marcar señales de presión narrativa:
   - sobrecarga emocional;
   - urgencia de compartir;
   - marco conspirativo;
@@ -127,7 +127,7 @@ Acción:
 - resumen por año y tipo de fuente;
 - entropía de actos de habla;
 - entropía de predicados;
-- grafo fuente--actor--acto--falacia--vector;
+- grafo fuente--actor--acto--marcador--señal;
 - exportación de trazabilidad técnica;
 - mapas para lectura cercana.
 
@@ -143,7 +143,7 @@ Acción:
   indicar repetición disciplinada; alta entropía puede indicar dispersión.
 - `predicate_entropy`: diversidad de verbos/predicados. Mide repetición
   estructural de relaciones.
-- `fallacy_signals`: número de proposiciones con señales de falacia.
+- `fallacy_signals`: número de proposiciones con marcadores retóricos revisables.
 - `disinformation_vector_signals`: número de proposiciones con señales de
   presión, miedo, conspiración o absolutismo.
 - `mean_structural_confidence`: confianza heurística de extracción SVO.

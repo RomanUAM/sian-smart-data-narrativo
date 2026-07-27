@@ -5,14 +5,22 @@ de fuentes públicas. No busca acumular Big Data indiscriminado: busca Smart
 Data, es decir, pocas fuentes relevantes, estructura argumental, relaciones,
 deltas, silencios, hashes y evidencia auditable.
 
+El objetivo operativo del sistema es construir una plataforma inteligente para
+exploración narrativa con datos provenientes de cuatro capas no equivalentes:
+fuentes periodísticas, artículos científicos, documentos gubernamentales o
+institucionales y expresiones ciudadanas públicas. La plataforma debe articular
+estos flujos de manera coherente y navegable, exponiendo en tiempo real qué se
+ha recolectado, qué falta, qué tipo de fuente domina y qué inferencias son
+válidas sólo como señales exploratorias.
+
 El sistema actual corre con Streamlit, JSON y CSV. Neo4j, FastAPI, PostgreSQL,
 embeddings semánticos y reportes ejecutivos automatizados son ruta futura de
 escalamiento, no requisito del prototipo actual.
 
-La versión actual incorpora disección estructural de narrativas: extracción
-heurística de proposiciones, actos de habla, causalidad, premisas implícitas,
-señales de falacia, vectores de desinformación, entropía narrativa y cadena de
-custodia. El marco está documentado en
+La versión actual incorpora segmentación estructural de narrativas: extracción
+heurística de proposiciones, actos de habla, causalidad, hipótesis de premisas
+implícitas, marcadores retóricos revisables, entropía narrativa y trazabilidad
+técnica del registro. El marco está documentado en
 [`STRUCTURAL_NARRATIVE_DISSECTION.md`](STRUCTURAL_NARRATIVE_DISSECTION.md).
 La poda inteligente Big Data → Smart Data está documentada en
 [`SMART_DATA_NUCLEUS.md`](SMART_DATA_NUCLEUS.md).
@@ -124,6 +132,14 @@ corporal, práctica estética, oficio, memoria e identidad, riesgo sanitario,
 estigma laboral, regulación pública y circulación visual/cultural. Estos rubros
 son editables porque el tópico puede cambiar.
 
+Antes de las pestañas especializadas, la app muestra un núcleo integrado de
+exploración narrativa. Ese tablero resume volumen por tipo de fuente, entidades
+o actores, eventos/etapas narrativas, relaciones temáticas, fuentes y marcadores
+temporales. También ofrece una consulta local en lenguaje natural mediante
+búsqueda normalizada dentro del corpus y una línea de tiempo por año y capa
+discursiva. Si una capa aparece en cero, el sistema debe tratarlo como brecha de
+corpus, no como silencio social demostrado.
+
 Los estados de texto se interpretan así:
 
 - `ok`: cuerpo suficiente para análisis textual completo.
@@ -156,6 +172,13 @@ trazable. El sistema no automatiza sesiones, CAPTCHAs ni espacios privados. En
 artículos o reportes se debe publicar análisis agregado y citas breves, no
 redistribución masiva del texto.
 
+`robots.txt` se usa como control técnico mínimo, pero no agota obligaciones
+legales ni términos de uso. Para publicación se deben respetar derechos de
+autor, privacidad contextual y buenas prácticas de cita. El repositorio no debe
+funcionar como archivo redistribuidor de contenido de terceros: debe conservar
+metadatos, hashes, relaciones, resultados agregados, enlaces y fragmentos breves
+cuando sean necesarios para verificación.
+
 Para las capas sociales hay controles más estrictos. Al correr el botón
 `Noticias`, la araña sólo acepta registros clasificados como `news` y reporta si
 no alcanza el mínimo anual configurado, por defecto 50. Al correr
@@ -185,11 +208,11 @@ invente registros ni que `other` sea una categoría interpretativa válida.
 - grafo de conocimiento con monogramas, bigramas, trigramas, fuentes, años, idioma y localización;
 - red semántica por coocurrencia;
 - disección estructural: sujeto-verbo-objeto, actos de habla, causalidad,
-  premisas ocultas, señales heurísticas de falacia o desinformación,
+  hipótesis de premisas implícitas, marcadores argumentales revisables,
   entropía de actos/predicados y trazabilidad técnica SHA-256;
 - Smart Data Nucleus: cartografía Pareto de fuentes, marcos
   problema-culpable-solución-urgencia, detección de ecos, deltas temporales y
-  silencios estructurales definidos por el analista;
+  ausencias relativas definidas por el analista dentro del corpus;
 - selección comparada de nodos relevantes mediante un selector nodal narrativo inspirado en cobertura; la app permite comparar barrido glotón por suma ponderada, MOEA, MOSA y adaptación local multiobjetivo del método de composición musical (MMC-MO) de Mora-Gutiérrez et al.;
 - frente Pareto, hipervolumen normalizado aproximado y superficie empírica \(u_1 \times u_3 \to u_2\) para comparar soluciones;
 - exportaciones CSV.
