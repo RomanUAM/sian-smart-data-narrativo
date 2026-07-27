@@ -275,7 +275,7 @@ def start_worker(config: dict) -> None:
                         row["variant_term_index"] = step_config.get("variant_term_index", "")
                         row["source_collection"] = step_config.get("source_collection", "")
                         all_rows.append(row)
-                        if row.get("status") in {"ok", "ok_partial", "too_short"}:
+                        if row.get("status") in {"ok", "ok_partial"}:
                             sequential_counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
                     progress(
                         f"Finished sequential run {index}/{total_steps}: "
@@ -4910,6 +4910,7 @@ with st.sidebar:
     )
     output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
     default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
+    default_forum_seed_path = APP_ROOT / "seed_sources" / "tatuaje_public_conversation_seed_urls.json"
     use_seed_urls = st.checkbox(
         "Usar URLs semilla de noticias mexicanas",
         value=default_seed_path.exists() and "tatu" in query.lower(),
@@ -4920,6 +4921,20 @@ with st.sidebar:
         "Archivo JSON de URLs semilla",
         value=str(default_seed_path) if default_seed_path.exists() else "",
         disabled=st.session_state.spider_running or not use_seed_urls,
+    )
+    use_forum_seed_urls = st.checkbox(
+        "Usar URLs semilla de blogs/foros públicos",
+        value=default_forum_seed_path.exists() and "tatu" in query.lower(),
+        help=(
+            "No depende de GDELT ni Reddit. Usa una lista curada de blogs, WordPress/Blogspot y señales conversacionales públicas. "
+            "Debe reportarse como muestra pública parcial, no como conversación social completa."
+        ),
+        disabled=st.session_state.spider_running,
+    )
+    forum_seed_url_file = st.text_input(
+        "Archivo JSON de URLs semilla conversacionales",
+        value=str(default_forum_seed_path) if default_forum_seed_path.exists() else "",
+        disabled=st.session_state.spider_running or not use_forum_seed_urls,
     )
     seed_domains_preview = domains_from_seed_file(seed_url_file) if use_seed_urls and seed_url_file else []
     use_seed_domains_for_search = st.checkbox(
@@ -5085,6 +5100,10 @@ config = {
     "required_source_types": [],
     "accept_source_types": [],
     "seed_url_file": seed_url_file if use_seed_urls and seed_url_file else "",
+    "seed_url_files_by_source": {
+        "news": seed_url_file if use_seed_urls and seed_url_file else "",
+        "forums": forum_seed_url_file if use_forum_seed_urls and forum_seed_url_file else "",
+    },
     "download_pdfs": False,
     "search_delay_seconds": float(search_delay),
     "delay_seconds": float(delay),
@@ -5106,6 +5125,18 @@ if source_strategy_rows:
         "El corpus semilla no sustituye la búsqueda: extrae dominios, secciones y patrones de URL para buscar más noticias dentro de cada medio."
     )
     st.dataframe(source_strategy_rows, use_container_width=True, hide_index=True)
+forum_source_strategy_rows = source_strategy_rows_from_seed_file(
+    config.get("seed_url_files_by_source", {}).get("forums", ""),
+    query,
+    query_variants,
+    geographic_terms,
+)
+if forum_source_strategy_rows:
+    st.markdown("Estrategias aprendidas de semillas conversacionales")
+    st.caption(
+        "Estas fuentes son blogs/foros públicos curados. Funcionan como capa humana parcial cuando GDELT/Reddit se bloquean."
+    )
+    st.dataframe(forum_source_strategy_rows, use_container_width=True, hide_index=True)
 
 profile_rows = source_profile_rows(domains, include_forums=True) if domains else source_profile_rows(include_forums=True)
 with st.expander("Catálogo auditable de fuentes base"):
@@ -5313,7 +5344,7 @@ if selected_source_run or run or run_sequential:
                         step["accept_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
                         step["required_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
                         step["target_min_per_source_type_year"] = SOURCE_COLLECTION_MIN_TARGETS.get(source_key, int(target_min_per_type_year))
-                        step["seed_url_file"] = config.get("seed_url_file", "") if source_key == "news" else ""
+                        step["seed_url_file"] = config.get("seed_url_files_by_source", {}).get(source_key, "")
                         step["variant_rubric"] = rubric_name
                         step["variant_term"] = term
                         step["variant_term_index"] = term_index
@@ -5349,7 +5380,7 @@ if selected_source_run or run or run_sequential:
         run_config["accept_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
         run_config["required_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
         run_config["target_min_per_source_type_year"] = SOURCE_COLLECTION_MIN_TARGETS.get(source_key, int(target_min_per_type_year))
-        run_config["seed_url_file"] = config.get("seed_url_file", "") if source_key == "news" else ""
+        run_config["seed_url_file"] = config.get("seed_url_files_by_source", {}).get(source_key, "")
         run_config["output_dir"] = source_output_dir(output_dir, source_key)
         if source_key == "forums":
             run_config["domains"] = merge_unique([

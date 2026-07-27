@@ -1023,6 +1023,14 @@ def load_seed_url_articles(seed_url_file: str | Path | None) -> list[dict]:
     return rows
 
 
+def source_types_in_seed_file(seed_url_file: str | Path | None) -> set[str]:
+    return {
+        str(row.get("source_type_override") or "").strip()
+        for row in load_seed_url_articles(seed_url_file)
+        if str(row.get("source_type_override") or "").strip()
+    }
+
+
 def search_reddit_rss(query: str, start: dt.datetime, end: dt.datetime, max_records: int) -> list[dict]:
     """Search public Reddit RSS posts for one period.
 
@@ -1602,7 +1610,11 @@ def crawl_news(
     ]
     seed_url_articles = load_seed_url_articles(seed_url_file)
     if progress and seed_url_articles:
-        progress(f"Seed URLs loaded: {len(seed_url_articles)} from {seed_url_file}")
+        seed_types = sorted(source_types_in_seed_file(seed_url_file))
+        progress(
+            f"Seed URLs loaded: {len(seed_url_articles)} from {seed_url_file}"
+            f"{' · source_types=' + ','.join(seed_types) if seed_types else ''}"
+        )
     seen_urls: set[str] = set()
     records: list[NewsRecord] = []
     accepted_by_year_type: dict[tuple[int, str], int] = {}
@@ -1803,7 +1815,8 @@ def crawl_news(
                         if progress:
                             progress(
                                 f"GDELT forums {start:%Y-%m}: stopped remaining forum GDELT queries "
-                                f"because status={forum_status}. Cooling down until month index {gdelt_forums_cooldown_until}."
+                                f"because status={forum_status}. Cooling down until month index {gdelt_forums_cooldown_until}. "
+                                "Switching to curated public conversation seeds/RSS if configured."
                             )
                         break
                     if forum_status == "bad_query":
@@ -2064,7 +2077,8 @@ def crawl_news(
                 error=error,
             )
             records.append(record)
-            mark_accepted_record(record.year, record.source_type)
+            if record.status in {"ok", "ok_partial"}:
+                mark_accepted_record(record.year, record.source_type)
             try:
                 save_incremental_record(output_dir, record)
                 append_record_jsonl(output_dir, record)
@@ -2165,7 +2179,8 @@ def crawl_news(
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
                 records.append(record)
-                mark_accepted_record(record.year, record.source_type)
+                if record.status in {"ok", "ok_partial"}:
+                    mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
                     append_record_jsonl(output_dir, record)
@@ -2252,7 +2267,8 @@ def crawl_news(
                     record.pdf_file = ""
                     record.pdf_status = "metadata_only_license_unverified"
                 records.append(record)
-                mark_accepted_record(record.year, record.source_type)
+                if record.status in {"ok", "ok_partial"}:
+                    mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
                     append_record_jsonl(output_dir, record)

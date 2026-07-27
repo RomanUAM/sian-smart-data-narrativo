@@ -144,7 +144,7 @@ def main() -> None:
             row["source_collection"] = step.get("source_collection", "")
             row["period_label"] = step.get("period_label", "")
             all_rows.append(row)
-            if row.get("status") in {"ok", "ok_partial", "too_short"}:
+            if row.get("status") in {"ok", "ok_partial"}:
                 counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
 
     merged_rows = merge_rows(all_rows)
