@@ -5427,18 +5427,36 @@ if "institutional_gdelt" in source_modes:
 if any(mode in source_modes for mode in {"openalex_oa", "crossref"}):
     balanced_target_types.append(("scientific_article", int(target_min_per_type_year)))
 if balanced_target_types:
-    st.caption("Objetivos visibles de balance para araña mezclada. `other` puede aparecer, pero no se usa como meta social.")
+    st.caption(
+        "Contadores visibles de balance para araña mezclada. "
+        "Muestran avance real contra el mínimo por año/tipo; `other` puede aparecer, pero no se usa como meta social."
+    )
+    current_balance_counts = Counter(
+        (int(row.get("year") or 0), row_source_type(row))
+        for row in st.session_state.get("spider_rows", [])
+        if has_usable_text(row) and str(row.get("year", "")).isdigit()
+    )
+    balance_counter_rows = []
+    for year in range(int(start_year), int(end_year) + 1):
+        for source_type, minimum in balanced_target_types:
+            current_count = current_balance_counts.get((year, source_type), 0)
+            maximum_cap = int(config["max_records_per_source_type_year"])
+            balance_counter_rows.append(
+                {
+                    "year": year,
+                    "source_type": source_type,
+                    "counter": f"{current_count}/{minimum}",
+                    "actual_usable": current_count,
+                    "minimum_target": minimum,
+                    "gap_to_min": max(0, int(minimum) - current_count),
+                    "maximum_cap": maximum_cap,
+                    "cap_remaining": max(0, maximum_cap - current_count),
+                    "progress_to_min": round(current_count / max(1, int(minimum)), 3) if minimum else 1.0,
+                    "status": "ok" if current_count >= int(minimum) else "under_target",
+                }
+            )
     st.dataframe(
-        [
-            {
-                "year": year,
-                "source_type": source_type,
-                "minimum_target": minimum,
-                "maximum_cap": config["max_records_per_source_type_year"],
-            }
-            for year in range(int(start_year), int(end_year) + 1)
-            for source_type, minimum in balanced_target_types
-        ],
+        balance_counter_rows,
         use_container_width=True,
         hide_index=True,
     )
