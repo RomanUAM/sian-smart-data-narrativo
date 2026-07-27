@@ -3960,6 +3960,13 @@ def filter_by_topical_relevance(
     return kept, removed
 
 
+def mixed_sort_key(value) -> tuple[int, int | str]:
+    text = str(value)
+    if text.isdigit():
+        return (0, int(text))
+    return (1, text.lower())
+
+
 def corpus_audit_rows(rows: list[dict]) -> list[dict]:
     status_counts = Counter(row.get("status", "unknown") for row in rows)
     type_counts = Counter(row_source_type(row) for row in rows)
@@ -3969,7 +3976,10 @@ def corpus_audit_rows(rows: list[dict]) -> list[dict]:
     audit.extend({"dimension": "status", "value": key, "records": value} for key, value in status_counts.most_common())
     audit.extend({"dimension": "source_type", "value": key, "records": value} for key, value in type_counts.most_common())
     audit.extend({"dimension": "source_api", "value": key, "records": value} for key, value in api_counts.most_common())
-    audit.extend({"dimension": "year", "value": key, "records": value} for key, value in sorted(year_counts.items()))
+    audit.extend(
+        {"dimension": "year", "value": key, "records": value}
+        for key, value in sorted(year_counts.items(), key=lambda item: mixed_sort_key(item[0]))
+    )
     return audit
 
 
