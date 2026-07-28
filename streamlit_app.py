@@ -27,6 +27,7 @@ from narrative_analysis import (
     build_knowledge_graph,
     count_rows,
     enrich_records_for_analysis,
+    exact_hypervolume_3d_max,
     extract_narrative_events,
     filter_records,
     frame_counts,
@@ -2685,11 +2686,13 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
                 key="methods_detail_select",
             )
             selected_cover = next(cover for cover in method_covers if cover["stats"]["method"] == selected_method_label)
+            selected_cover_rows = combined_pareto_rows([selected_cover], methods_graph)
+            selected_exact_hv = hypervolume_3d_from_rows(selected_cover_rows) if selected_cover_rows else selected_cover["stats"].get("hypervolume", "—")
             d1, d2, d3, d4 = st.columns(4)
             d1.metric("Nodos/total", selected_cover["stats"].get("nodes_ratio", "—"))
             d2.metric("Peso nodal/total", selected_cover["stats"].get("node_weight_ratio", "—"))
             d3.metric("Aristas removidas/total", selected_cover["stats"].get("removed_edge_weight_ratio", "—"))
-            d4.metric("Hipervolumen", selected_cover["stats"].get("hypervolume", "—"))
+            d4.metric("Hipervolumen 3D", selected_exact_hv)
             st.markdown("Nodos seleccionados por el método")
             st.dataframe(selected_cover["selected_nodes"], use_container_width=True)
             if selected_cover.get("pareto_front"):
@@ -4424,6 +4427,7 @@ def pareto_front_summary_rows(rows: list[dict]) -> list[dict]:
         method_front_rows = nondominated_rows(method_rows) or method_rows
         global_rows = [row for row in method_front_rows if row.get("global_pareto")]
         method_vectors = [pareto_row_vector(row) for row in method_front_rows]
+        method_hypervolume = hypervolume_3d_max(method_vectors)
         quality = pareto_quality_metrics(method_vectors, reference_vectors)
         budgets = sorted({row.get("evaluation_budget") for row in method_rows if row.get("evaluation_budget") is not None})
         used = sorted({row.get("evaluations_used") for row in method_rows if row.get("evaluations_used") is not None})
@@ -4435,7 +4439,7 @@ def pareto_front_summary_rows(rows: list[dict]) -> list[dict]:
                 "front_points": len(method_front_rows),
                 "generated_feasible_points": len(method_rows),
                 "global_nondominated_points": len(global_rows),
-                "method_hypervolume": max(float(row.get("method_hypervolume", 0) or 0) for row in method_rows),
+                "method_hypervolume": method_hypervolume,
                 "igd_to_global_front": quality["igd"],
                 "spacing_std": quality["spacing_std"],
                 "dispersion_extent": quality["dispersion_extent"],
@@ -4461,6 +4465,17 @@ def pareto_row_vector(row: dict) -> tuple[float, float, float]:
         float(row.get("u2_relevance_node_weight", 0) or 0),
         float(row.get("u3_edge_preservation_1_minus_removed", 0) or 0),
     )
+
+
+def hypervolume_3d_max(vectors: list[tuple[float, float, float]]) -> float:
+    """Exact dominated hypervolume for maximization in [0,1]^3 with reference (0,0,0)."""
+    return exact_hypervolume_3d_max(vectors)
+
+
+def hypervolume_3d_from_rows(rows: list[dict]) -> float:
+    feasible_rows = [row for row in rows if bool(row.get("feasible", True))]
+    front_rows = nondominated_rows(feasible_rows) or feasible_rows
+    return hypervolume_3d_max([pareto_row_vector(row) for row in front_rows])
 
 
 def euclidean_distance(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
@@ -4676,6 +4691,7 @@ def repeated_cover_quality_experiment(
             quality = pareto_quality_metrics(method_vectors, reference_vectors)
             cover = covers_by_run.get((run_index, method), {})
             stats = cover.get("stats", {})
+            exact_hypervolume = hypervolume_3d_max(method_vectors)
             run_metric_rows.append(
                 {
                     "run": run_index,
@@ -4683,7 +4699,8 @@ def repeated_cover_quality_experiment(
                     "method": method,
                     "front_points_nondominated_feasible": len(method_front_rows),
                     "reference_front_points": len(reference_rows),
-                    "hypervolume": round(float(stats.get("hypervolume", 0) or 0), 6),
+                    "hypervolume": exact_hypervolume,
+                    "reported_solver_hypervolume": round(float(stats.get("hypervolume", 0) or 0), 6),
                     "igd_to_empirical_ideal_front": quality["igd"],
                     "dispersion_extent": quality["dispersion_extent"],
                     "spacing_std": quality["spacing_std"],

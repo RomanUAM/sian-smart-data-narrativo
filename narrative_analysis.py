@@ -1675,6 +1675,49 @@ def normalized_objective_vector(evaluation: dict, problem: dict, max_nodes: int)
     )
 
 
+def exact_hypervolume_3d_max(vectors: list[tuple[float, float, float]]) -> float:
+    """Exact dominated hypervolume for maximization in [0,1]^3, reference=(0,0,0).
+
+    The narrative cover model reports three normalized utilities:
+    compactness, selected-node relevance, and edge preservation. A point dominates
+    the rectangular volume from the origin up to its coordinates. The metric must
+    therefore be computed over the feasible nondominated set, not from a 2D
+    projection and not from a scalarized objective.
+    """
+    clean = [
+        (
+            max(0.0, min(1.0, float(vector[0]))),
+            max(0.0, min(1.0, float(vector[1]))),
+            max(0.0, min(1.0, float(vector[2]))),
+        )
+        for vector in vectors
+        if len(vector) == 3
+    ]
+    clean = [vector for vector in clean if vector[0] > 0 and vector[1] > 0 and vector[2] > 0]
+    if not clean:
+        return 0.0
+
+    xs = sorted({0.0, *[vector[0] for vector in clean]})
+    ys = sorted({0.0, *[vector[1] for vector in clean]})
+    zs = sorted({0.0, *[vector[2] for vector in clean]})
+    volume = 0.0
+    for xi in range(len(xs) - 1):
+        x_low, x_high = xs[xi], xs[xi + 1]
+        if x_high <= x_low:
+            continue
+        for yi in range(len(ys) - 1):
+            y_low, y_high = ys[yi], ys[yi + 1]
+            if y_high <= y_low:
+                continue
+            for zi in range(len(zs) - 1):
+                z_low, z_high = zs[zi], zs[zi + 1]
+                if z_high <= z_low:
+                    continue
+                if any(vector[0] >= x_high and vector[1] >= y_high and vector[2] >= z_high for vector in clean):
+                    volume += (x_high - x_low) * (y_high - y_low) * (z_high - z_low)
+    return round(volume, 6)
+
+
 def approximate_hypervolume(
     evaluations: list[dict],
     problem: dict,
@@ -1682,7 +1725,11 @@ def approximate_hypervolume(
     samples: int = 4000,
     seed: int = 17,
 ) -> float:
-    """Deterministic Monte Carlo hypervolume in normalized three-objective SCP space."""
+    """Exact hypervolume in normalized three-objective SCP space.
+
+    ``samples`` and ``seed`` remain in the signature for backward compatibility
+    with older calls, but the computation is now exact in 3D.
+    """
     front_evaluations = []
     values = list(
         {
@@ -1697,13 +1744,7 @@ def approximate_hypervolume(
     if not front_evaluations:
         return 0.0
     vectors = [normalized_objective_vector(row, problem, max_nodes) for row in front_evaluations]
-    rng = random.Random(seed)
-    dominated = 0
-    for _ in range(samples):
-        point = (rng.random(), rng.random(), rng.random())
-        if any(all(vector[i] >= point[i] for i in range(3)) for vector in vectors):
-            dominated += 1
-    return dominated / samples
+    return exact_hypervolume_3d_max(vectors)
 
 
 def cover_problem_signature(problem: dict, max_nodes: int, purpose: str = "") -> tuple:

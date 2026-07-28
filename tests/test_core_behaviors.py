@@ -22,6 +22,7 @@ from narrative_analysis import (  # noqa: E402
     _cover_problem_data,
     _cover_result_from_ids,
     _evaluate_cover_solution,
+    exact_hypervolume_3d_max,
     frame_counts,
     infer_domain_profile,
     idea_group_counts,
@@ -33,6 +34,13 @@ from structural_narrative import technical_traceability_rows  # noqa: E402
 
 
 class CoreBehaviorTests(unittest.TestCase):
+    def test_exact_hypervolume_3d_single_point(self) -> None:
+        self.assertAlmostEqual(exact_hypervolume_3d_max([(0.8, 0.5, 0.6)]), 0.24)
+
+    def test_exact_hypervolume_3d_union_not_projection(self) -> None:
+        hypervolume = exact_hypervolume_3d_max([(0.5, 0.5, 0.5), (0.75, 0.25, 0.5)])
+        self.assertAlmostEqual(hypervolume, 0.15625)
+
     def test_month_periods_respects_bounds(self) -> None:
         periods = list(month_periods(2021, 2021, start_month=2, end_month=4))
         self.assertEqual([period[0].month for period in periods], [2, 3, 4])
