@@ -65,6 +65,9 @@ from news_spider import (
 from source_profiles import (
     domains_from_seed_file as catalog_domains_from_seed_file,
     profile_domains,
+    source_layer_accept_types,
+    source_layer_specs_from_labels,
+    source_layer_specs_from_modes as catalog_layer_specs_from_source_modes,
     source_profile_rows,
     source_strategy_rows_from_seed_file as catalog_source_strategy_rows_from_seed_file,
 )
@@ -5552,19 +5555,18 @@ exclude_domains = [
     if item.strip()
 ]
 source_modes = [SOURCE_MODE_LABELS[label] for label in source_mode_labels]
-SEQUENTIAL_SOURCE_LAYER_SPECS = {
-    "Noticias": ("news", ["gdelt_news", "google_news_rss"], False),
-    "Foros/conversaciones": ("forums", ["forums"], False),
-    "Gobierno/instituciones": ("institutional", ["institutional_gdelt"], False),
-    "Artículos + PDFs": ("articles", ["openalex_oa", "crossref", "redalyc"], True),
-    "Reportes/Otros": ("reports_other", ["gdelt_news"], False),
-}
+SEQUENTIAL_SOURCE_LAYER_SPECS = source_layer_specs_from_labels(
+    [
+        "Noticias",
+        "Foros/conversaciones",
+        "Gobierno/instituciones",
+        "Artículos + PDFs",
+        "Reportes/Otros",
+    ]
+)
 SOURCE_COLLECTION_ACCEPT_TYPES = {
-    "news": ["news"],
-    "forums": ["forum"],
-    "institutional": ["institutional_report"],
-    "articles": ["scientific_article"],
-    "reports_other": [],
+    source_key: source_layer_accept_types(source_key)
+    for source_key in ["news", "forums", "institutional", "articles", "reports_other"]
 }
 SOURCE_COLLECTION_MIN_TARGETS = {
     "news": int(min_news_per_year),

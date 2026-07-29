@@ -17,6 +17,87 @@ def canonical_domain(value: str) -> str:
     return domain.removeprefix("www.")
 
 
+SOURCE_LAYER_DEFINITIONS: dict[str, dict] = {
+    "news": {
+        "label": "Noticias",
+        "modes": ["gdelt_news", "google_news_rss"],
+        "accept_source_types": ["news"],
+        "download_pdfs": False,
+        "periodicity": "monthly",
+        "role": "Fuentes periodísticas y agencias/notas indexadas.",
+    },
+    "forums": {
+        "label": "Foros/conversaciones",
+        "modes": ["forums", "reddit_rss"],
+        "accept_source_types": ["forum"],
+        "download_pdfs": False,
+        "periodicity": "monthly",
+        "role": "Conversación pública abierta: foros, blogs, RSS públicos y discusión ciudadana indexable.",
+    },
+    "institutional": {
+        "label": "Gobierno/instituciones",
+        "modes": ["institutional_gdelt"],
+        "accept_source_types": ["institutional_report"],
+        "download_pdfs": False,
+        "periodicity": "monthly",
+        "role": "Documentos o páginas institucionales de gobierno, reguladores y organismos.",
+    },
+    "articles": {
+        "label": "Artículos + PDFs",
+        "modes": ["openalex_oa", "crossref", "redalyc"],
+        "accept_source_types": ["scientific_article"],
+        "download_pdfs": True,
+        "periodicity": "yearly",
+        "role": "Artículos científicos abiertos con metadatos y PDF cuando exista licencia/URL pública.",
+    },
+    "reports_other": {
+        "label": "Reportes/Otros",
+        "modes": ["gdelt_news"],
+        "accept_source_types": [],
+        "download_pdfs": False,
+        "periodicity": "monthly",
+        "role": "Capa residual explícita para documentos web que no entran limpiamente en otra categoría.",
+    },
+}
+
+SOURCE_LAYER_LABELS: dict[str, str] = {
+    str(spec["label"]): key for key, spec in SOURCE_LAYER_DEFINITIONS.items()
+}
+
+
+def source_layer_accept_types(source_key: str) -> list[str]:
+    return list(SOURCE_LAYER_DEFINITIONS.get(source_key, {}).get("accept_source_types", []))
+
+
+def source_layer_target_type(source_key: str) -> str:
+    accept_types = source_layer_accept_types(source_key)
+    return (accept_types or ["other"])[0]
+
+
+def source_layer_specs_from_labels(labels: Iterable[str]) -> dict[str, tuple[str, list[str], bool]]:
+    """Return canonical layer specs keyed by UI label."""
+    specs: dict[str, tuple[str, list[str], bool]] = {}
+    for label in labels:
+        source_key = SOURCE_LAYER_LABELS.get(str(label))
+        if not source_key:
+            continue
+        spec = SOURCE_LAYER_DEFINITIONS[source_key]
+        specs[str(label)] = (source_key, list(spec["modes"]), bool(spec["download_pdfs"]))
+    return specs
+
+
+def source_layer_specs_from_modes(source_modes: Iterable[str]) -> list[tuple[str, list[str], bool]]:
+    """Translate selected engines into the canonical mixed-spider layers."""
+    modes = set(source_modes or [])
+    layers: list[tuple[str, list[str], bool]] = []
+    for source_key in ["news", "forums", "institutional", "articles", "reports_other"]:
+        spec = SOURCE_LAYER_DEFINITIONS[source_key]
+        selected_modes = [mode for mode in spec["modes"] if mode in modes]
+        if selected_modes:
+            layers.append((source_key, selected_modes, bool(spec["download_pdfs"])))
+    return layers
+
+
 NEWS_SOURCE_PROFILES: list[dict] = [
     {
         "medium": "La Jornada",

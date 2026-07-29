@@ -1,0 +1,83 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black}
+
+\title{SIAN: a local smart-data workflow for narrative analysis}
+\author{Working paper for methodological review}
+\date{July 29, 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+SIAN is a local workflow for building traceable narrative corpora from public sources: news, open scientific articles, institutional documents, public blogs, forums and web articles. The goal is not large-scale harvesting for its own sake, but a balanced corpus that can support network analysis, semantic grouping, sentiment summaries and multiobjective concept coverage. The methodology follows the spirit of previous work on AI-assisted analysis of media narratives, complex networks and semantic structures published in Contactos \cite{contactos625}, while keeping a human validation stage for actors, frames and cultural interpretation.
+\end{abstract}
+
+\section{Methodological position}
+
+The system does not treat texts as isolated bags of words. It treats them as an information ecosystem. A narrative may appear first in everyday conversation, then move into news coverage, later into institutional documents and finally into scientific interpretation. These layers have different evidential value and different social functions; therefore they must be collected and analyzed separately before being merged.
+
+\section{Source layers}
+
+\begin{center}
+\begin{tabular}{p{3cm}p{4cm}p{6cm}}
+\toprule
+Layer & Typical sources & Function\\
+\midrule
+News & GDELT, RSS, curated URLs & Events, controversies and public framing.\\
+Scientific articles & OpenAlex, Crossref, Redalyc, open PDFs & Specialized evidence and conceptual stabilization.\\
+Institutional sources & Government and public agencies & Regulation, alerts, standards and official language.\\
+Forums and blogs & Public forums, blogs and RSS feeds & Organic public conversation when legally accessible.\\
+Other web sources & Open web documents & Residual layer, never silently mixed with news or science.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Pipeline}
+
+The reference implementation is the mixed spider. Source-specific runs and full runs must use the same plan; only the scope changes.
+
+\[
+\begin{aligned}
+\text{configuration} &\rightarrow \text{collection plan}
+\rightarrow \text{candidate records}\\
+&\rightarrow \text{validation}
+\rightarrow \text{deduplication}
+\rightarrow \text{enrichment}\\
+&\rightarrow \text{JSON corpus}
+\rightarrow \text{analysis}.
+\end{aligned}
+\]
+
+All records must preserve source type, URL, medium, year, query variant, geographic scope, extraction status and error messages. This is required for auditability.
+
+\section{Narrative network}
+
+After cleaning, the system builds a narrative graph. Nodes may represent unigrams, bigrams, trigrams, actors, frames, events or sources. Edges represent co-occurrence or structural relations. Node and edge weights are normalized counts in $[0,1]$.
+
+Communities are detected with Louvain or comparable methods. The result is exploratory: it helps identify clusters, silences, repeated frames and semantic shifts, but it does not replace interpretation.
+
+\section{Human validation}
+
+Human validation is part of the method. The user must be able to remove irrelevant nodes, correct actors, merge equivalent phrases, exclude commercial noise and interpret whether a semantic community has cultural meaning.
+
+\section{Optimization}
+
+The multiobjective model selects a compact set of concepts that covers narrative units, maximizes selected node relevance and minimizes structural damage caused by removing the selected nodes. Feasibility is handled consistently: feasible solutions dominate infeasible ones; among infeasible solutions, the one with smaller coverage violation is preferred.
+
+\section{Limits}
+
+The system can try to obtain a minimum number of records per source type and year, but it cannot honestly guarantee that such records exist or are legally accessible. It must report coverage gaps instead of hiding them. This is essential for publication.
+
+\begin{thebibliography}{9}
+\bibitem{contactos625}
+Mora-Gutiérrez, R. A. and collaborators. Article in \emph{Contactos}. Available at: \url{https://contactos.izt.uam.mx/index.php/contactos/article/view/625}.
+\end{thebibliography}
+
+\end{document}

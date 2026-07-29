@@ -1,0 +1,114 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{amsmath}
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black}
+
+\title{SIAN: metodología para construir y analizar corpus narrativos con datos públicos}
+\author{Documento de trabajo para revisión editorial}
+\date{29 de julio de 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Este documento describe una metodología local para recolectar, limpiar, clasificar y analizar narrativas públicas a partir de noticias, artículos científicos abiertos, documentos institucionales, blogs, foros y otros textos web. El objetivo no es acumular grandes volúmenes de datos, sino construir un corpus trazable y balanceado que permita estudiar cómo cambia una narrativa entre fuentes, años y comunidades semánticas. La propuesta se apoya en redes complejas, procesamiento de lenguaje natural, análisis de sentimientos, extracción de marcos narrativos y un modelo multiobjetivo de cobertura de conceptos. Se toma como antecedente metodológico el trabajo publicado en Contactos sobre inteligencia artificial, narrativa mediática, redes y análisis semántico \cite{contactos625}, así como el material suplementario local sobre interacción humano-computadora y generación recursiva de narrativas visuales \cite{frontierssupp}.
+\end{abstract}
+
+\section{Problema}
+
+Analizar una narrativa social no equivale a contar palabras. Una palabra frecuente puede ser ruido, una noticia breve puede condensar un cambio de encuadre y una conversación pública puede mostrar tensiones que no aparecen en los artículos científicos. Por eso el sistema SIAN se diseña como una plataforma de \emph{datos inteligentes}: menos dependiente de fuerza bruta y más orientada a trazabilidad, balance de fuentes y estructura.
+
+El caso de estudio inicial es el tatuaje como práctica cultural, estética, identitaria y sanitaria. Sin embargo, la arquitectura debe funcionar para otros tópicos. El tema puede cambiar; lo que permanece es el método: definir variantes, excluir falsos positivos, recolectar por capas, limpiar, consolidar y analizar redes narrativas.
+
+\section{Antecedente metodológico}
+
+El artículo de Contactos \cite{contactos625} es pertinente porque usa inteligencia artificial para estudiar narrativa mediática, evolución temporal, comunidades, sentimiento y estructuras semánticas. La lección central para este proyecto es que los textos no deben tratarse como registros aislados, sino como un sistema de relaciones entre fuentes, actores, temas y cambios de percepción.
+
+El material suplementario proporcionado \cite{frontierssupp} añade una idea útil: la interpretación humana no desaparece. El proceso combina extracción computacional con revisión humana de significados, metáforas, actores y representaciones. En SIAN esta idea se traduce en una fase explícita de validación humana: el usuario puede excluir nodos, corregir grupos, revisar actores y decidir si un resultado tiene sentido cultural.
+
+\section{Arquitectura de recolección}
+
+La araña mezclada es la implementación de referencia. Esto significa que la búsqueda por fuente y la búsqueda completa usan el mismo plan; sólo cambia el alcance. Una corrida completa combina capas, años, rubros y variantes. Una corrida parcial ejecuta un subconjunto del mismo plan.
+
+\begin{longtable}{p{3cm}p{4cm}p{6cm}}
+\toprule
+Capa & Fuentes & Papel narrativo\\
+\midrule
+Noticias & GDELT, RSS, URLs semilla & Registran eventos, polémicas, casos y cambios de encuadre público.\\
+Artículos científicos & OpenAlex, Crossref, Redalyc, PDF abierto & Aportan evidencia revisada o especializada; no sustituyen la conversación social.\\
+Instituciones & Gobierno, reguladores, organismos & Muestran normas, alertas, políticas públicas y lenguaje oficial.\\
+Foros y blogs & Foros abiertos, blogs, RSS públicos & Capturan experiencia, opinión y conversación orgánica cuando existe acceso público.\\
+Otros documentos web & Páginas abiertas clasificables & Sirven como capa residual y deben mantenerse separados para no contaminar categorías.\\
+\bottomrule
+\end{longtable}
+
+\section{Procesamiento}
+
+Cada candidato pasa por la misma secuencia lógica:
+
+\begin{enumerate}
+    \item normalización de URL, DOI, medio, año y fuente;
+    \item descarga del texto cuando el acceso es público y legal;
+    \item limpieza de menús, anuncios, recomendaciones y restos de plantilla;
+    \item exclusión de dominios o términos que producen falsos positivos;
+    \item validación geográfica cuando el estudio lo requiere;
+    \item deduplicación por URL canónica, DOI o huella del título;
+    \item clasificación de fuente narrativa;
+    \item extracción de campos para análisis local;
+    \item guardado incremental en JSON;
+    \item consolidación final sin duplicados.
+\end{enumerate}
+
+La limpieza debe ejecutarse antes de construir monogramas, bigramas, trigramas, actores o redes. Si se analiza texto sin normalizar, aparecen nodos irrelevantes como nombres de plantillas, marcas comerciales, menús, idiomas o restos de navegación.
+
+\section{Análisis narrativo}
+
+El análisis debe producir, al menos, cinco salidas:
+
+\begin{enumerate}
+    \item distribución del corpus por año, fuente, medio, país y tipo narrativo;
+    \item términos, bigramas y trigramas filtrados por palabras vacías y exclusiones editables;
+    \item red semántica con nodos ponderados por frecuencia y aristas ponderadas por coaparición o relación;
+    \item comunidades mediante Louvain u otro método de partición;
+    \item comparación temporal de marcos: problema, actor, causa, solución y consecuencia.
+\end{enumerate}
+
+La red no debe entenderse como una prueba automática de causalidad. Es un mapa exploratorio. Su valor está en hacer visibles agrupamientos, ausencias, repeticiones y desplazamientos de sentido.
+
+\section{Intervención humana}
+
+La intervención humana no es un adorno. Es parte del método. El usuario debe poder:
+
+\begin{itemize}
+    \item excluir nodos irrelevantes;
+    \item corregir actores;
+    \item agrupar frases equivalentes;
+    \item separar ruido comercial de uso cultural;
+    \item revisar si una comunidad semántica tiene interpretación social;
+    \item decidir si el corpus está balanceado antes de publicar resultados.
+\end{itemize}
+
+\section{Límites}
+
+El sistema no garantiza que existan 50 noticias, 50 artículos o 50 comentarios por año. Lo que sí debe garantizar es que intenta buscarlos con una estrategia transparente, registra la cobertura obtenida y reporta brechas. Una brecha no es un error si la fuente no existe o no es legalmente accesible; sí es un error si el sistema deja de buscar sin reportarlo.
+
+\section{Conclusión}
+
+SIAN propone una metodología reproducible para pasar de textos dispersos a un corpus narrativo analizable. Su fortaleza no está en prometer automatización total, sino en combinar extracción local, trazabilidad, balance de fuentes, redes complejas y revisión humana. Para publicación, el punto crítico será demostrar que el corpus es suficiente y balanceado para la pregunta cultural planteada.
+
+\begin{thebibliography}{9}
+\bibitem{contactos625}
+Mora-Gutiérrez, R. A. y colaboradores. Artículo en \emph{Contactos}. Disponible en: \url{https://contactos.izt.uam.mx/index.php/contactos/article/view/625}.
+
+\bibitem{frontierssupp}
+Mora-Gutiérrez, R. A. y colaboradores. \emph{Human-Computer Interaction for Recursive Prompt and Image Generation on Media Narratives of Violence in Mexico}. Material suplementario local proporcionado para el proyecto, 2026.
+\end{thebibliography}
+
+\end{document}
+

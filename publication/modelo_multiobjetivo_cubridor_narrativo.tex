@@ -1,0 +1,180 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath,amssymb}
+\geometry{margin=2.5cm}
+\hypersetup{colorlinks=true,linkcolor=black,urlcolor=blue,citecolor=black}
+
+\title{Modelo multiobjetivo para cobertura de conceptos en redes narrativas}
+\author{Documento técnico de trabajo}
+\date{29 de julio de 2026}
+
+\begin{document}
+\maketitle
+
+\section{Propósito}
+
+Este documento formaliza el problema que resuelve el módulo de optimización de SIAN. El objetivo no es elegir ``las palabras más frecuentes'', sino seleccionar un subconjunto pequeño de conceptos que cubra unidades narrativas relevantes, conserve alta relevancia semántica y mida el daño estructural que produciría retirar esos conceptos de la red.
+
+\section{Red narrativa}
+
+Sea $G=(V,E)$ una red narrativa. Cada nodo $i \in V$ puede representar un monograma, bigrama, trigrama, actor, fuente, marco o evento extraído del corpus. Cada arista $(i,j)\in E$ representa coaparición, relación semántica o relación estructural entre dos nodos.
+
+Los pesos se normalizan en $[0,1]$:
+
+\[
+w_i = \frac{c_i}{\max_{k\in V} c_k}, \qquad
+w_{ij} = \frac{c_{ij}}{\max_{(p,q)\in E} c_{pq}},
+\]
+
+donde $c_i$ es el conteo del nodo y $c_{ij}$ el conteo o intensidad de la relación. Esta normalización evita mezclar escalas incompatibles entre frecuencia textual y peso de aristas.
+
+\section{Universo de cobertura}
+
+Sea $\mathcal{U}$ el universo de unidades narrativas que deben ser cubiertas. Una unidad puede ser:
+
+\begin{itemize}
+    \item un documento;
+    \item un marco narrativo;
+    \item una comunidad semántica;
+    \item un evento;
+    \item una combinación fuente-año-tema.
+\end{itemize}
+
+Para cada unidad $u\in \mathcal{U}$ se define $S_u\subseteq V$, el conjunto de nodos que representan o explican esa unidad. Una solución selecciona nodos mediante variables binarias:
+
+\[
+x_i =
+\begin{cases}
+1, & \text{si el nodo } i \text{ es seleccionado},\\
+0, & \text{en otro caso}.
+\end{cases}
+\]
+
+La factibilidad se define por:
+
+\[
+\sum_{i\in S_u} x_i \geq 1 \qquad \forall u\in \mathcal{U}.
+\]
+
+Esto es una variante del problema de cobertura de conjuntos. Es NP-completo en su versión de decisión, por lo que se justifica usar heurísticas y metaheurísticas cuando la red crece.
+
+\section{Aristas removidas}
+
+Para medir impacto estructural se define:
+
+\[
+z_{ij} =
+\begin{cases}
+1, & \text{si la arista } (i,j) \text{ se elimina al retirar el conjunto seleccionado},\\
+0, & \text{en otro caso}.
+\end{cases}
+\]
+
+La arista se elimina si al menos uno de sus extremos fue seleccionado y retirado. Por tanto:
+
+\[
+z_{ij} \geq x_i,\qquad z_{ij}\geq x_j,\qquad z_{ij}\leq x_i+x_j.
+\]
+
+Esto corrige una confusión importante: no se conserva una arista sólo porque ambos nodos estén seleccionados. El objetivo estructural cuenta las aristas que desaparecerían si se retirara el conjunto cubridor.
+
+\section{Objetivos normalizados}
+
+Se usan tres objetivos comparables:
+
+\[
+u_1(x)=1-\frac{\sum_{i\in V}x_i}{|V|},
+\]
+
+\[
+u_2(x)=\frac{\sum_{i\in V} w_i x_i}{\sum_{i\in V} w_i},
+\]
+
+\[
+u_3(x)=1-\frac{\sum_{(i,j)\in E}w_{ij}z_{ij}}{\sum_{(i,j)\in E}w_{ij}}.
+\]
+
+La interpretación es:
+
+\begin{itemize}
+    \item $u_1$: maximizar compacidad; usar pocos nodos.
+    \item $u_2$: maximizar relevancia; seleccionar nodos con alto peso narrativo.
+    \item $u_3$: maximizar preservación estructural; minimizar el peso de aristas removidas.
+\end{itemize}
+
+El problema multiobjetivo es:
+
+\[
+\max \; F(x) = (u_1(x),u_2(x),u_3(x))
+\]
+
+sujeto a las restricciones de cobertura y definición de $z_{ij}$.
+
+\section{Factibilidad}
+
+Las heurísticas deben usar el mismo criterio de factibilidad:
+
+\begin{enumerate}
+    \item entre dos soluciones factibles, usar dominancia de Pareto;
+    \item entre una factible y una infactible, preferir la factible;
+    \item entre dos infactibles, preferir la de menor violación total:
+    \[
+    \phi(x)=\sum_{u\in \mathcal{U}}\max\left(0,1-\sum_{i\in S_u}x_i\right).
+    \]
+\end{enumerate}
+
+Este criterio evita comparar soluciones inviables como si fueran resultados científicos.
+
+\section{Métodos comparables}
+
+Los métodos deben ejecutarse bajo el mismo número de evaluaciones de función objetivo y sobre el mismo grafo:
+
+\begin{center}
+\begin{tabular}{p{4cm}p{9cm}}
+\toprule
+Método & Papel\\
+\midrule
+Barrido glotón ponderado & Construye soluciones con distintos pesos sobre $u_1,u_2,u_3$.\\
+MOEA & Cruza y muta subconjuntos, conserva archivo no dominado.\\
+MOSA & Usa recocido multiobjetivo con aceptación por dominancia, temperatura y factibilidad.\\
+MMC-MO & Parte de soluciones guía obtenidas por relajaciones lineales y modifica arreglos de nodos mediante memoria adaptativa.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Relajaciones lineales}
+
+Antes de ejecutar heurísticas se resuelven relajaciones monoobjetivo para estimar puntos guía:
+
+\[
+\max u_1(x),\qquad \max u_2(x),\qquad \max u_3(x),
+\]
+
+con $x_i,z_{ij}\in[0,1]$. Estas soluciones no sustituyen el problema entero, pero sirven para construir memoria inicial, estimar rangos y definir puntos de referencia para hipervolumen.
+
+\section{Evaluación estadística}
+
+El hipervolumen, la distancia generacional inversa y la dispersión deben calcularse sólo sobre el conjunto no dominado de cada método. Cada método debe ejecutarse al menos $k=10$ veces. Se reportan:
+
+\begin{itemize}
+    \item media, mediana, moda, mínimo, máximo y varianza;
+    \item intervalo de confianza bootstrap al 95\%;
+    \item prueba de Wilcoxon pareada cuando se comparan métodos bajo las mismas semillas;
+    \item frente no dominado en tres dimensiones y proyecciones bidimensionales auxiliares.
+\end{itemize}
+
+\section{Alcance}
+
+El modelo no demuestra por sí mismo que un concepto sea culturalmente central. Produce candidatos estructuralmente relevantes que deben interpretarse con análisis humano, revisión de fuente y lectura contextual. Esa combinación es coherente con la metodología de análisis narrativo asistido por IA referida en Contactos \cite{contactos625}.
+
+\begin{thebibliography}{9}
+\bibitem{contactos625}
+Mora-Gutiérrez, R. A. y colaboradores. Artículo en \emph{Contactos}. Disponible en: \url{https://contactos.izt.uam.mx/index.php/contactos/article/view/625}.
+\end{thebibliography}
+
+\end{document}
+
