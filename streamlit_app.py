@@ -324,6 +324,12 @@ def start_worker(config: dict) -> None:
                         row["variant_term"] = step_config.get("variant_term", "")
                         row["variant_term_index"] = step_config.get("variant_term_index", "")
                         row["source_collection"] = step_config.get("source_collection", "")
+                        narrative_rubrics, narrative_terms = classify_row_with_rubrics(
+                            row,
+                            step_config.get("classification_rubrics") or config.get("classification_rubrics") or {},
+                        )
+                        row["narrative_rubrics"] = ", ".join(narrative_rubrics)
+                        row["narrative_rubric_terms"] = ", ".join(narrative_terms)
                         all_rows.append(row)
                         if has_usable_text(row):
                             sequential_counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
@@ -364,6 +370,22 @@ def start_worker(config: dict) -> None:
                         prior["variant_rubric"] = ", ".join(rubrics)
                         prior["variant_term"] = ", ".join(terms)
                         prior["source_collection"] = ", ".join(collections)
+                        prior["narrative_rubrics"] = ", ".join(
+                            merge_unique(
+                                [
+                                    str(prior.get("narrative_rubrics") or ""),
+                                    str(row.get("narrative_rubrics") or ""),
+                                ]
+                            )
+                        )
+                        prior["narrative_rubric_terms"] = ", ".join(
+                            merge_unique(
+                                [
+                                    str(prior.get("narrative_rubric_terms") or ""),
+                                    str(row.get("narrative_rubric_terms") or ""),
+                                ]
+                            )
+                        )
                 output_dir = Path(config["output_dir"])
                 output_dir.mkdir(parents=True, exist_ok=True)
                 merged_rows = sorted(
@@ -407,7 +429,16 @@ def start_worker(config: dict) -> None:
                     progress=progress,
                     stop_requested=stop_event.is_set,
                 )
-                rows = [asdict(record) for record in records]
+                rows = []
+                for record in records:
+                    row = asdict(record)
+                    narrative_rubrics, narrative_terms = classify_row_with_rubrics(
+                        row,
+                        config.get("classification_rubrics") or {},
+                    )
+                    row["narrative_rubrics"] = ", ".join(narrative_rubrics)
+                    row["narrative_rubric_terms"] = ", ".join(narrative_terms)
+                    rows.append(row)
                 update_run_manifest(config, "finished", rows)
                 q.put(("done", rows))
         except Exception as exc:  # noqa: BLE001
@@ -3944,6 +3975,53 @@ def parse_variant_rubrics(text: str, fallback_query: str) -> dict[str, list[str]
     return rubrics
 
 
+def broad_collection_terms(query: str, rubrics: dict[str, list[str]], limit: int = 8) -> list[str]:
+    """Return broad terms for collection before narrative classification.
+
+    Rubrics such as `estetica_diseño` or `sociedad_trabajo` are interpretive
+    categories. Using them as first-pass news queries creates sparse, biased and
+    rate-limit-heavy plans. The collection stage must start from nucleus terms;
+    rubrics are applied later to the retrieved records.
+    """
+    nucleus = rubrics.get("núcleo") or rubrics.get("nucleo") or []
+    terms = merge_unique([query, *nucleus])
+    if not terms:
+        terms = [
+            term
+            for values in rubrics.values()
+            for term in values
+        ]
+    return merge_unique([term for term in terms if clean_search_term(term)])[: max(1, int(limit))]
+
+
+def classify_row_with_rubrics(row: dict, rubrics: dict[str, list[str]]) -> tuple[list[str], list[str]]:
+    """Classify a retrieved record into narrative rubrics after collection."""
+    haystack = normalize_local(
+        " ".join(
+            str(row.get(field) or "")
+            for field in ["title", "text_clean", "summary", "medium", "url"]
+        )
+    )
+    if not haystack:
+        return [], []
+    matched_rubrics: list[str] = []
+    matched_terms: list[str] = []
+    for rubric_name, terms in rubrics.items():
+        if rubric_name in {"núcleo", "nucleo"}:
+            continue
+        local_hits = []
+        for term in terms:
+            normalized = normalize_local(term)
+            if len(normalized) < 3 or normalized in CONNECTOR_ONLY_TERMS:
+                continue
+            if normalized in haystack:
+                local_hits.append(term)
+        if local_hits:
+            matched_rubrics.append(rubric_name)
+            matched_terms.extend(local_hits)
+    return matched_rubrics, merge_unique(matched_terms)
+
+
 def merge_unique(items: list[str]) -> list[str]:
     seen = set()
     output = []
@@ -5267,38 +5345,38 @@ with st.sidebar:
         disabled=st.session_state.spider_running,
     )
     sequential_source_layer_labels = st.multiselect(
-        "Capas para corrida secuencial rubro × año × fuente",
+        "Capas para corrida secuencial amplia + clasificación narrativa",
         options=["Noticias", "Foros/conversaciones", "Gobierno/instituciones", "Artículos + PDFs", "Reportes/Otros"],
         default=["Noticias", "Foros/conversaciones", "Gobierno/instituciones", "Artículos + PDFs"],
         help=(
-            "El botón Rubros × fuentes corre de forma lineal por rubro, año y capa seleccionada. "
-            "Esto permite ver qué fuente/año ya terminó y fusionar después."
+            "El botón secuencial usa términos núcleo amplios para recolectar y después clasifica por rubros. "
+            "Esto permite ver qué fuente/año ya terminó sin sesgar la búsqueda por frases interpretativas."
         ),
         disabled=st.session_state.spider_running,
     )
     sequential_synonym_limit = st.slider(
-        "Máximo de términos por rubro en corrida secuencial",
+        "Máximo de términos de búsqueda por etapa",
         min_value=1,
         max_value=20,
         value=8,
         step=1,
-        help="Usa el término base del rubro y luego sinónimos en orden. Evita saturar motores con todos los sinónimos.",
+        help="Para noticias/foros/instituciones usa términos núcleo amplios. Para artículos puede usar términos de rubro.",
         disabled=st.session_state.spider_running,
     )
     sequential_terms_per_month = st.slider(
-        "Términos aleatorios por mes y capa",
+        "Términos por mes/año y capa",
         min_value=1,
         max_value=20,
         value=8,
         step=1,
         help=(
-            "En noticias, foros, instituciones y reportes la corrida toma una muestra reproducible de N términos por mes/capa. "
-            "Esto evita fuerza bruta y reduce sesgo por orden fijo. Artículos científicos se tratan por año para no duplicar OpenAlex/Crossref."
+            "En noticias, foros, instituciones y reportes usa términos núcleo amplios por mes/capa. "
+            "Los rubros se asignan después al corpus recuperado. Artículos científicos se tratan por año."
         ),
         disabled=st.session_state.spider_running,
     )
     sequential_randomize = st.checkbox(
-        "Aleatorizar orden de rubros/términos de forma reproducible",
+        "Aleatorizar orden de términos de forma reproducible",
         value=True,
         help="Evita sesgar la recuperación hacia el primer rubro. La semilla hace que el orden pueda repetirse.",
         disabled=st.session_state.spider_running,
@@ -5593,6 +5671,7 @@ config = {
     "query": query,
     "query_variants": query_variants,
     "variant_rubrics": selected_variant_rubrics,
+    "classification_rubrics": selected_variant_rubrics,
     "geographic_scope": geographic_choice,
     "geographic_terms": geographic_terms,
     "exclude_terms": exclude_terms,
@@ -5737,7 +5816,7 @@ if balanced_target_types:
         hide_index=True,
     )
 if selected_variant_rubrics:
-    st.caption("Rubros activos de variantes; la corrida secuencial los ejecuta uno por uno.")
+    st.caption("Rubros activos de variantes; se usan para clasificar la narrativa después de recolectar el corpus amplio.")
     st.dataframe(
         [
             {"rubro": name, "variantes": ", ".join(terms), "n_variantes": len(terms)}
@@ -5747,9 +5826,10 @@ if selected_variant_rubrics:
         hide_index=True,
     )
     st.caption(
-        "Estrategia secuencial adaptativa: para cada año y capa se prueba un solo término a la vez. "
-        "El orden de rubros/términos puede aleatorizarse con semilla; cuando se alcanza la cuota anual "
-        "de un tipo de fuente, los pasos restantes para ese año/tipo se saltan."
+        "Estrategia amplia primero: noticias, foros e instituciones se recolectan con términos núcleo; "
+        "los rubros interpretativos se asignan después al texto recuperado. Artículos científicos pueden usar "
+        "variantes más específicas por año. Cuando se alcanza la cuota anual de un tipo de fuente, los pasos "
+        "restantes para ese año/tipo se saltan."
     )
 
 with st.expander("Diseño metodológico adaptable"):
@@ -5804,7 +5884,7 @@ action_options = [
     "4. Crear base de artículos científicos + PDFs",
     "5. Crear base de reportes/otros",
     "6. Fusionar bases por fuente",
-    "7. Corrida secuencial rubros × fuentes",
+    "7. Corrida secuencial amplia + rubros",
     "8. Araña mezclada exploratoria",
 ]
 selected_action = st.selectbox(
@@ -5828,7 +5908,7 @@ run_institutional = execute_action and selected_action == "3. Crear base de gobi
 run_articles = execute_action and selected_action == "4. Crear base de artículos científicos + PDFs"
 run_reports = execute_action and selected_action == "5. Crear base de reportes/otros"
 merge_bases = execute_action and selected_action == "6. Fusionar bases por fuente"
-run_sequential = execute_action and selected_action == "7. Corrida secuencial rubros × fuentes"
+run_sequential = execute_action and selected_action == "7. Corrida secuencial amplia + rubros"
 run = execute_action and selected_action == "8. Araña mezclada exploratoria"
 
 source_run_specs = {
@@ -5864,30 +5944,37 @@ if selected_source_run or run or run_sequential:
             st.error("Selecciona al menos una capa de fuente para la corrida secuencial.")
             st.stop()
         plan = []
-        rubric_term_steps = []
+        broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
+        broad_term_steps = [
+            ("búsqueda_amplia", term_index, term, broad_terms)
+            for term_index, term in enumerate(broad_terms, start=1)
+        ]
+        article_term_steps = []
         for rubric_name, rubric_terms in selected_variant_rubrics.items():
             terms = merge_unique([query, *rubric_terms])[: int(sequential_synonym_limit)]
             for term_index, term in enumerate(terms, start=1):
-                rubric_term_steps.append((rubric_name, term_index, term, terms))
+                article_term_steps.append((rubric_name, term_index, term, terms))
         rng = random.Random(int(sequential_seed)) if sequential_randomize else None
         if rng:
-            rng.shuffle(rubric_term_steps)
+            rng.shuffle(broad_term_steps)
+            rng.shuffle(article_term_steps)
         monthly_term_budget = max(1, int(sequential_terms_per_month))
         for year in range(int(start_year), int(end_year) + 1):
             for source_key, modes, download_pdfs in sequential_source_layers:
                 if source_key == "articles":
+                    term_pool = article_term_steps or broad_term_steps
                     if rng:
-                        sampled_year_terms = rng.sample(rubric_term_steps, min(monthly_term_budget, len(rubric_term_steps)))
+                        sampled_year_terms = rng.sample(term_pool, min(monthly_term_budget, len(term_pool)))
                     else:
-                        sampled_year_terms = rubric_term_steps[:monthly_term_budget]
+                        sampled_year_terms = term_pool[:monthly_term_budget]
                     periods_for_source = [(None, sampled_year_terms)]
                 else:
                     periods_for_source = []
                     for month in range(1, 13):
                         if rng:
-                            sampled_terms = rng.sample(rubric_term_steps, min(monthly_term_budget, len(rubric_term_steps)))
+                            sampled_terms = rng.sample(broad_term_steps, min(monthly_term_budget, len(broad_term_steps)))
                         else:
-                            sampled_terms = rubric_term_steps[:monthly_term_budget]
+                            sampled_terms = broad_term_steps[:monthly_term_budget]
                         periods_for_source.append((month, sampled_terms))
                 for month, selected_terms in periods_for_source:
                     for rubric_name, term_index, term, rubric_terms in selected_terms:
@@ -5908,6 +5995,7 @@ if selected_source_run or run or run_sequential:
                         step["variant_term"] = term
                         step["variant_term_index"] = term_index
                         step["variant_rubric_terms"] = rubric_terms
+                        step["classification_rubrics"] = selected_variant_rubrics
                         step["source_collection"] = source_key
                         step["target_source_type"] = (SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, ["other"]) or ["other"])[0]
                         period_label = f"{year}-{month:02d}" if month else str(year)
@@ -5927,15 +6015,20 @@ if selected_source_run or run or run_sequential:
         run_config["run_plan"] = plan
         run_config["output_dir"] = output_dir
         st.info(
-            f"Corriendo plan secuencial adaptativo: {len(plan)} pasos. "
-            f"Para web pública usa años × meses × capas × hasta {monthly_term_budget} términos aleatorios; "
-            "artículos científicos se agrupan por año para evitar duplicados. "
-            "Cada paso usa un solo término y se saltan pasos cuando una cuota ya se cumplió."
+            f"Corriendo plan secuencial amplio + clasificación: {len(plan)} pasos. "
+            f"Web pública usa términos núcleo ({', '.join(broad_terms)}) y clasifica rubros después. "
+            "Artículos científicos pueden usar variantes de rubro por año. "
+            "Se saltan pasos cuando una cuota anual ya se cumplió."
         )
     elif selected_source_run:
         source_key, modes, download_pdfs = selected_source_run
         run_config["source_modes"] = modes
         run_config["download_pdfs"] = download_pdfs
+        if source_key != "articles":
+            broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
+            run_config["query"] = broad_terms[0]
+            run_config["query_variants"] = broad_terms[1:]
+            run_config["classification_rubrics"] = selected_variant_rubrics
         run_config["accept_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
         run_config["required_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
         run_config["target_min_per_source_type_year"] = SOURCE_COLLECTION_MIN_TARGETS.get(source_key, int(target_min_per_type_year))
@@ -5951,7 +6044,14 @@ if selected_source_run or run or run_sequential:
                 *SOURCE_PRESETS.get("Gobierno México / instituciones públicas", []),
                 *SOURCE_PRESETS.get("Gobierno global / organismos internacionales", []),
             ])
-        st.info(f"Corriendo capa `{source_key}` en {run_config['output_dir']}")
+        st.info(
+            f"Corriendo capa `{source_key}` en {run_config['output_dir']}. "
+            + (
+                f"Búsqueda amplia: {', '.join(broad_terms)}; rubros se clasifican después."
+                if source_key != "articles"
+                else "Artículos científicos usan variantes temáticas y PDFs abiertos cuando existan."
+            )
+        )
     elif run:
         mixed_required = []
         if any(mode in source_modes for mode in {"gdelt_news", "google_news_rss"}):
@@ -5995,6 +6095,10 @@ if selected_source_run or run or run_sequential:
             public_step = dict(run_config)
             public_step["source_modes"] = indexed_modes
             public_step["download_pdfs"] = False
+            public_broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
+            public_step["query"] = public_broad_terms[0]
+            public_step["query_variants"] = public_broad_terms[1:]
+            public_step["classification_rubrics"] = selected_variant_rubrics
             public_required = [source_type for source_type in mixed_required if source_type != "scientific_article"]
             public_step["required_source_types"] = public_required
             public_step["accept_source_types"] = public_required
@@ -6012,6 +6116,11 @@ if selected_source_run or run or run_sequential:
             public_step["output_dir"] = str(Path(output_dir) / "mixed_layers" / "public_layers")
             run_config["run_plan"] = [academic_step, public_step]
             run_config["output_dir"] = output_dir
+        elif indexed_modes and not academic_modes:
+            public_broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
+            run_config["query"] = public_broad_terms[0]
+            run_config["query_variants"] = public_broad_terms[1:]
+            run_config["classification_rubrics"] = selected_variant_rubrics
         st.info(
             "Araña mezclada por capas: si incluye artículos científicos, ahora OpenAlex/Crossref corren primero "
             "para que la capa académica no quede escondida detrás de 84 meses de RSS/GDELT. "
