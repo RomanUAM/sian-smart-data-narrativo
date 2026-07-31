@@ -533,6 +533,25 @@ def source_record_files(source_dir: str | Path) -> list[Path]:
     return sorted(filtered)
 
 
+def record_file_unavailable_reason(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        return f"stat_error:{type(exc).__name__}"
+    if stat.st_size <= 2:
+        return "empty_or_json_empty_array"
+    if getattr(stat, "st_blocks", 1) == 0:
+        return "dataless_or_cloud_offloaded"
+    try:
+        with path.open("rb") as fh:
+            fh.read(1)
+    except TimeoutError:
+        return "read_timeout"
+    except OSError as exc:
+        return f"read_error:{type(exc).__name__}"
+    return "parse_error_or_no_dict_rows"
+
+
 def safe_key(value: str) -> str:
     normalized = normalize_local(value)
     cleaned = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in normalized)
@@ -565,6 +584,7 @@ def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dic
             "files_with_rows": 0,
             "rows_seen": 0,
             "read_failures_or_empty": 0,
+            "unavailable_reasons": {},
         }
         for record_file in source_record_files(source_dir):
             source_report["files_found"] += 1
@@ -575,6 +595,8 @@ def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dic
                 continue
             if not loaded:
                 source_report["read_failures_or_empty"] += 1
+                reason = record_file_unavailable_reason(record_file)
+                source_report["unavailable_reasons"][reason] = source_report["unavailable_reasons"].get(reason, 0) + 1
                 continue
             source_report["files_with_rows"] += 1
             source_report["rows_seen"] += len(loaded)

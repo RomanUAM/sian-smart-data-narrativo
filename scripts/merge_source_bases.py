@@ -79,6 +79,25 @@ def read_records(path: Path) -> list[dict]:
     return []
 
 
+def unavailable_reason(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        return f"stat_error:{type(exc).__name__}"
+    if stat.st_size <= 2:
+        return "empty_or_json_empty_array"
+    if getattr(stat, "st_blocks", 1) == 0:
+        return "dataless_or_cloud_offloaded"
+    try:
+        with path.open("rb") as fh:
+            fh.read(1)
+    except TimeoutError:
+        return "read_timeout"
+    except OSError as exc:
+        return f"read_error:{type(exc).__name__}"
+    return "parse_error_or_no_dict_rows"
+
+
 def source_record_files(source_dir: Path) -> list[Path]:
     if not source_dir.exists():
         return []
@@ -121,11 +140,14 @@ def merge_sources(base_output_dir: Path, source_keys: list[str]) -> tuple[list[d
             "rows_seen": 0,
             "rows_merged_or_duplicate": 0,
             "read_failures_or_empty": 0,
+            "unavailable_reasons": {},
         }
         for record_file in files:
             rows = read_records(record_file)
             if not rows:
                 source_report["read_failures_or_empty"] += 1
+                reason = unavailable_reason(record_file)
+                source_report["unavailable_reasons"][reason] = source_report["unavailable_reasons"].get(reason, 0) + 1
                 continue
             source_report["files_with_rows"] += 1
             source_report["rows_seen"] += len(rows)
