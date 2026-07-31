@@ -503,6 +503,42 @@ def source_output_dir(base_output_dir: str, source_key: str) -> str:
     return str(Path(base_output_dir) / "by_source" / source_key)
 
 
+def source_record_files(source_dir: str | Path) -> list[Path]:
+    """Return record files for a source folder, including sequential by-rubric runs.
+
+    A source can be produced in two valid ways:
+    1. direct source run: ``by_source/<source>/news_records.json``;
+    2. sequential run: many nested ``by_source/<source>/by_rubric/.../news_records.json``.
+
+    The previous merge only checked the source root. That silently ignored
+    forums/institutional folders created by sequential runs, so the user saw
+    non-empty folders that never entered the merged corpus.
+    """
+    base = Path(source_dir)
+    if not base.exists():
+        return []
+    if base.is_file():
+        return [base]
+    preferred = [
+        base / "news_records_sequential_merged.json",
+        base / "news_records_merged.json",
+        base / "news_records.json",
+        base / "news_records.jsonl",
+    ]
+    files: list[Path] = [path for path in preferred if path.exists() and path.is_file()]
+    if files:
+        return files
+    nested = sorted(
+        {
+            path
+            for pattern in ("news_records.json", "news_records.jsonl", "news_records_incremental.jsonl")
+            for path in base.rglob(pattern)
+            if path.is_file()
+        }
+    )
+    return nested
+
+
 def safe_key(value: str) -> str:
     normalized = normalize_local(value)
     cleaned = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in normalized)
@@ -520,14 +556,22 @@ def source_strategy_rows_from_seed_file(seed_file: str, query: str, variants: li
 def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dict]:
     merged: dict[str, dict] = {}
     for source_key in source_keys:
-        rows = load_records_from_path(source_output_dir(base_output_dir, source_key))
+        source_dir = source_output_dir(base_output_dir, source_key)
+        rows: list[dict] = []
+        for record_file in source_record_files(source_dir):
+            try:
+                rows.extend(load_records_from_path(str(record_file)))
+            except Exception:
+                continue
         for row in rows:
             key = row_document_dedup_key(row)
             if not key:
                 continue
             if key not in merged:
                 copy = dict(row)
-                copy["source_collection"] = source_key
+                copy["source_collection"] = ", ".join(
+                    merge_unique([str(copy.get("source_collection") or ""), source_key])
+                )
                 merged[key] = copy
             else:
                 prior = merged[key]
