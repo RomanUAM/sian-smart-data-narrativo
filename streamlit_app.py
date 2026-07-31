@@ -5503,6 +5503,7 @@ with st.sidebar:
     output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
     default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
     default_forum_seed_path = APP_ROOT / "seed_sources" / "tatuaje_public_conversation_seed_urls.json"
+    default_institutional_seed_path = APP_ROOT / "seed_sources" / "tatuaje_institutional_seed_urls.json"
     default_academic_seed_path = APP_ROOT / "seed_sources" / "tatuaje_academic_seed_urls.json"
     use_seed_urls = st.checkbox(
         "Usar URLs semilla de noticias mexicanas",
@@ -5528,6 +5529,20 @@ with st.sidebar:
         "Archivo JSON de URLs semilla conversacionales",
         value=str(default_forum_seed_path) if default_forum_seed_path.exists() else "",
         disabled=st.session_state.spider_running or not use_forum_seed_urls,
+    )
+    use_institutional_seed_urls = st.checkbox(
+        "Usar URLs semilla de gobierno/instituciones",
+        value=default_institutional_seed_path.exists() and "tatu" in query.lower(),
+        help=(
+            "Procesa primero páginas oficiales abiertas de COFEPRIS/gob.mx/organismos. "
+            "Esto evita que la capa institucional dependa sólo de GDELT, que suele limitar o no indexar bien documentos públicos."
+        ),
+        disabled=st.session_state.spider_running,
+    )
+    institutional_seed_url_file = st.text_input(
+        "Archivo JSON de URLs semilla institucionales",
+        value=str(default_institutional_seed_path) if default_institutional_seed_path.exists() else "",
+        disabled=st.session_state.spider_running or not use_institutional_seed_urls,
     )
     use_academic_seed_urls = st.checkbox(
         "Usar semillas controladas de artículos científicos",
@@ -5718,6 +5733,7 @@ config = {
     "seed_url_files_by_source": {
         "news": seed_url_file if use_seed_urls and seed_url_file else "",
         "forums": forum_seed_url_file if use_forum_seed_urls and forum_seed_url_file else "",
+        "institutional": institutional_seed_url_file if use_institutional_seed_urls and institutional_seed_url_file else "",
         "articles": academic_seed_url_file if use_academic_seed_urls and academic_seed_url_file else "",
     },
     "download_pdfs": False,

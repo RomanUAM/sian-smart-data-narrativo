@@ -2103,6 +2103,12 @@ def crawl_news(
             return f"{observed}/max {cap}"
         return str(observed)
 
+    def annual_required_targets_met(year: int) -> bool:
+        target = int(target_min_per_source_type_year or 0)
+        if target <= 0 or not required_source_type_set:
+            return False
+        return all(accepted_count(int(year), source_type) >= target for source_type in required_source_type_set)
+
     periods = list(month_periods(start_year, end_year, start_month=start_month, end_month=end_month))
     gdelt_news_cooldown_until = 0
     gdelt_forums_cooldown_until = 0
@@ -2119,6 +2125,17 @@ def crawl_news(
             break
         if progress:
             progress(f"Searching {start:%Y-%m} ({period_index}/{len(periods)})")
+        if annual_required_targets_met(start.year):
+            if progress:
+                summary = ", ".join(
+                    f"{source_type}={balance_status(start.year, source_type)}"
+                    for source_type in sorted(required_source_type_set)
+                )
+                progress(
+                    f"coverage_target_met: {start.year} · {summary}. "
+                    f"Skipping {start:%Y-%m} to avoid unnecessary index calls."
+                )
+            continue
         articles: list[dict] = []
         seed_rows_for_period = [
             row for row in seed_url_articles
