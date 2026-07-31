@@ -358,6 +358,7 @@ def load_records_from_path(path: str | Path) -> list[dict]:
     path = Path(path)
     if path.is_dir():
         candidates = [
+            path / "news_records.jsonl",
             path / "news_records.json",
             path / "news_records_recleaned.json",
         ]
@@ -387,11 +388,16 @@ def load_records_from_path(path: str | Path) -> list[dict]:
         return []
     if path.suffix.lower() == ".jsonl":
         try:
-            return [
-                json.loads(line)
-                for line in path.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+            records = []
+            with path.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    item = json.loads(line)
+                    if isinstance(item, dict):
+                        records.append(item)
+            return records
         except (OSError, json.JSONDecodeError):
             return []
     try:

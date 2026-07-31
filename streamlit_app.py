@@ -504,39 +504,33 @@ def source_output_dir(base_output_dir: str, source_key: str) -> str:
 
 
 def source_record_files(source_dir: str | Path) -> list[Path]:
-    """Return record files for a source folder, including sequential by-rubric runs.
+    """Return all usable record files for a source folder.
 
-    A source can be produced in two valid ways:
-    1. direct source run: ``by_source/<source>/news_records.json``;
-    2. sequential run: many nested ``by_source/<source>/by_rubric/.../news_records.json``.
-
-    The previous merge only checked the source root. That silently ignored
-    forums/institutional folders created by sequential runs, so the user saw
-    non-empty folders that never entered the merged corpus.
+    The mixed spider is the reference strategy and can leave results in three
+    layouts: root merged files, nested by-rubric collection files, and per-record
+    JSON files under year folders. Fusion must discover all three; otherwise the
+    app reports empty corpora even when the crawl produced records.
     """
     base = Path(source_dir)
     if not base.exists():
         return []
     if base.is_file():
         return [base]
-    preferred = [
-        base / "news_records_sequential_merged.json",
-        base / "news_records_merged.json",
-        base / "news_records.json",
-        base / "news_records.jsonl",
+    ignored_names = {"query_plan.json", "run_manifest.json", "merge_report.json"}
+    files = [
+        path
+        for path in base.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in {".json", ".jsonl"}
+        and path.name not in ignored_names
     ]
-    files: list[Path] = [path for path in preferred if path.exists() and path.is_file()]
-    if files:
-        return files
-    nested = sorted(
-        {
-            path
-            for pattern in ("news_records.json", "news_records.jsonl", "news_records_incremental.jsonl")
-            for path in base.rglob(pattern)
-            if path.is_file()
-        }
-    )
-    return nested
+    jsonl_siblings = {path.with_suffix(".jsonl") for path in files if path.suffix.lower() == ".json"}
+    filtered: list[Path] = []
+    for path in files:
+        if path.suffix.lower() == ".json" and path.with_suffix(".jsonl") in jsonl_siblings:
+            continue
+        filtered.append(path)
+    return sorted(filtered)
 
 
 def safe_key(value: str) -> str:
@@ -555,14 +549,37 @@ def source_strategy_rows_from_seed_file(seed_file: str, query: str, variants: li
 
 def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dict]:
     merged: dict[str, dict] = {}
+    merge_report = {
+        "base_output_dir": str(base_output_dir),
+        "sources": {},
+        "total_rows_seen": 0,
+        "total_rows_merged": 0,
+        "duplicates": 0,
+    }
     for source_key in source_keys:
         source_dir = source_output_dir(base_output_dir, source_key)
         rows: list[dict] = []
+        source_report = {
+            "source_dir": source_dir,
+            "files_found": 0,
+            "files_with_rows": 0,
+            "rows_seen": 0,
+            "read_failures_or_empty": 0,
+        }
         for record_file in source_record_files(source_dir):
+            source_report["files_found"] += 1
             try:
-                rows.extend(load_records_from_path(str(record_file)))
+                loaded = load_records_from_path(str(record_file))
             except Exception:
+                source_report["read_failures_or_empty"] += 1
                 continue
+            if not loaded:
+                source_report["read_failures_or_empty"] += 1
+                continue
+            source_report["files_with_rows"] += 1
+            source_report["rows_seen"] += len(loaded)
+            merge_report["total_rows_seen"] += len(loaded)
+            rows.extend(loaded)
         for row in rows:
             key = row_document_dedup_key(row)
             if not key:
@@ -574,18 +591,30 @@ def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dic
                 )
                 merged[key] = copy
             else:
+                merge_report["duplicates"] += 1
                 prior = merged[key]
                 prior["source_collection"] = ", ".join(
                     merge_unique([str(prior.get("source_collection") or ""), source_key])
                 )
+        merge_report["sources"][source_key] = source_report
     output_dir = Path(base_output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    merged_rows = sorted(merged.values(), key=lambda item: (item.get("year") or 0, item.get("source_type") or "", item.get("medium") or ""))
+    merged_rows = sorted(merged.values(), key=lambda item: (str(item.get("year") or ""), str(item.get("source_type") or ""), str(item.get("medium") or "")))
+    merge_report["total_rows_merged"] = len(merged_rows)
+    if not merged_rows and merge_report["total_rows_seen"] == 0:
+        existing = output_dir / "news_records_merged.json"
+        merge_report["write_status"] = "skipped_empty_merge_to_preserve_existing_output"
+        (output_dir / "merge_report.json").write_text(json.dumps(merge_report, ensure_ascii=False, indent=2), encoding="utf-8")
+        if existing.exists() and existing.stat().st_size > 2:
+            return load_records_from_path(existing)
+        return []
+    merge_report["write_status"] = "written"
     (output_dir / "news_records_merged.json").write_text(json.dumps(merged_rows, ensure_ascii=False, indent=2), encoding="utf-8")
     (output_dir / "news_records_merged.jsonl").write_text(
         "\n".join(json.dumps(row, ensure_ascii=False) for row in merged_rows) + ("\n" if merged_rows else ""),
         encoding="utf-8",
     )
+    (output_dir / "merge_report.json").write_text(json.dumps(merge_report, ensure_ascii=False, indent=2), encoding="utf-8")
     return merged_rows
 
 
