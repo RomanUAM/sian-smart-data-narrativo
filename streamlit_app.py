@@ -465,13 +465,146 @@ def request_stop() -> None:
 
 
 def load_saved_rows(path: str) -> list[dict]:
-    rows = load_records_from_path(path)
+    rows, loaded_candidate = autoload_saved_rows(path)
     st.session_state.spider_rows = rows
-    st.session_state.loaded_path = path
+    st.session_state.loaded_path = loaded_candidate or path
     return rows
 
 
 def candidate_analysis_paths(path: str) -> list[str]:
+    raw = (path or "news_output").strip()
+    bases: list[Path] = []
+    requested = Path(raw).expanduser()
+    bases.append(requested)
+    if not requested.is_absolute():
+        bases.append((Path.cwd() / requested).resolve())
+    # Common local locations used during development and packaged runs. These
+    # make the app navigable when Streamlit is launched from a different folder
+    # than the one where the spider wrote the corpus.
+    home = Path.home()
+    bases.extend(
+        [
+            home / "Documents" / "sian-smart-data-narrativo-main" / "news_output",
+            home / "Documents" / "Codex" / "2026-06-20" / "c" / "news_spider" / "news_output",
+        ]
+    )
+
+    candidates: list[Path] = []
+    for base in bases:
+        if base.is_dir() or not base.suffix:
+            candidates.extend(
+                [
+                    base / "news_records_merged.jsonl",
+                    base / "news_records_sequential_merged.jsonl",
+                    base / "news_records_merged.json",
+                    base / "news_records_sequential_merged.json",
+                    base / "news_records.jsonl",
+                    base / "news_records.json",
+                    base,
+                ]
+            )
+        else:
+            candidates.append(base)
+            # If the user points at an empty merged file, the meaningful corpus
+            # may still be recoverable from its parent news_output/by_source.
+            if base.name.startswith("news_records_merged"):
+                candidates.append(base.parent)
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in candidates:
+        key = str(item)
+        if key not in seen:
+            seen.add(key)
+            unique.append(key)
+    return unique
+
+
+def merge_report_message(base_dir: str | Path) -> str:
+    report_path = Path(base_dir) / "merge_report.json"
+    if not report_path.exists():
+        return ""
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    parts = []
+    for source_key, source_report in (report.get("sources") or {}).items():
+        reasons = source_report.get("unavailable_reasons") or {}
+        if reasons:
+            reason_text = ", ".join(f"{reason}={count}" for reason, count in reasons.items())
+            parts.append(f"{source_key}: {reason_text}")
+        elif source_report.get("files_found", 0) == 0:
+            parts.append(f"{source_key}: sin archivos")
+    if not parts:
+        return ""
+    return "Diagnóstico de fusión: " + "; ".join(parts)
+
+
+def try_merge_candidate(candidate: str) -> tuple[list[dict], str]:
+    base = Path(candidate)
+    if base.is_file():
+        base = base.parent
+    if not base.exists() or not base.is_dir():
+        return [], ""
+    if not (base / "by_source").exists():
+        return [], ""
+    try:
+        rows = merge_source_bases(str(base), ["news", "forums", "institutional", "articles", "reports_other"])
+    except Exception:
+        return [], ""
+    if rows:
+        return rows, str(base / "news_records_merged.json")
+    return [], ""
+
+
+def autoload_saved_rows(path: str) -> tuple[list[dict], str]:
+    checked_dirs: set[str] = set()
+    for candidate in candidate_analysis_paths(path):
+        try:
+            rows = load_records_from_path(candidate)
+        except Exception:
+            rows = []
+        if rows:
+            st.session_state.spider_rows = rows
+            st.session_state.loaded_path = candidate
+            return rows, candidate
+        base_for_merge = Path(candidate)
+        merge_base = base_for_merge if base_for_merge.is_dir() else base_for_merge.parent
+        merge_key = str(merge_base)
+        if merge_key not in checked_dirs:
+            checked_dirs.add(merge_key)
+            rows, loaded_candidate = try_merge_candidate(candidate)
+            if rows:
+                st.session_state.spider_rows = rows
+                st.session_state.loaded_path = loaded_candidate
+                return rows, loaded_candidate
+    return [], ""
+
+
+def default_analysis_path(default_output_dir: str) -> str:
+    preferred = [
+        Path(default_output_dir),
+        Path.home() / "Documents" / "sian-smart-data-narrativo-main" / "news_output",
+        Path.home() / "Documents" / "Codex" / "2026-06-20" / "c" / "news_spider" / "news_output",
+    ]
+    for base in preferred:
+        if base.exists():
+            return str(base)
+    return default_output_dir
+
+
+def analysis_path_options(default_output_dir: str) -> list[str]:
+    options = []
+    for candidate in candidate_analysis_paths(default_analysis_path(default_output_dir)):
+        path = Path(candidate)
+        if path.exists():
+            value = str(path)
+            if value not in options:
+                options.append(value)
+    return options
+
+
+def old_candidate_analysis_paths(path: str) -> list[str]:
     base = Path(path or "news_output")
     if base.is_dir() or not base.suffix:
         candidates = [
@@ -484,19 +617,6 @@ def candidate_analysis_paths(path: str) -> list[str]:
     else:
         candidates = [base]
     return [str(item) for item in candidates]
-
-
-def autoload_saved_rows(path: str) -> tuple[list[dict], str]:
-    for candidate in candidate_analysis_paths(path):
-        try:
-            rows = load_records_from_path(candidate)
-        except Exception:
-            continue
-        if rows:
-            st.session_state.spider_rows = rows
-            st.session_state.loaded_path = candidate
-            return rows, candidate
-    return [], ""
 
 
 def source_output_dir(base_output_dir: str, source_key: str) -> str:
@@ -1606,10 +1726,20 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
 
     col_path, col_button = st.columns([3, 1])
     with col_path:
+        detected_paths = analysis_path_options(default_output_dir)
+        if detected_paths:
+            selected_detected_path = st.selectbox(
+                "Rutas detectadas",
+                detected_paths,
+                index=0,
+                help="Rutas existentes que la app puede intentar cargar o fusionar automáticamente.",
+            )
+        else:
+            selected_detected_path = default_analysis_path(default_output_dir)
         analysis_path = st.text_input(
             "Archivo o carpeta JSON para analizar",
-            value=st.session_state.loaded_path or default_output_dir,
-            help="Puedes poner una carpeta como news_output o un archivo news_records.json/jsonl.",
+            value=st.session_state.loaded_path or selected_detected_path,
+            help="Recomendado: usa la carpeta news_output. Si el fusionado está vacío, la app intentará reconstruirlo desde by_source.",
         )
     with col_button:
         st.write("")
@@ -1619,7 +1749,13 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             if rows:
                 st.success(f"Corpus cargado: {len(rows)} registros.")
             else:
-                st.warning("No encontré registros en esa ruta.")
+                st.warning("No encontré registros analizables en esa ruta.")
+                base_for_report = Path(analysis_path)
+                if base_for_report.is_file():
+                    base_for_report = base_for_report.parent
+                report_msg = merge_report_message(base_for_report)
+                if report_msg:
+                    st.error(report_msg)
 
     rows = st.session_state.spider_rows
     if not rows and not st.session_state.get("spider_running"):
@@ -1627,6 +1763,12 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         if rows:
             st.info(f"Corpus cargado automáticamente desde: {loaded_candidate}")
     if not rows:
+        base_for_report = Path(analysis_path)
+        if base_for_report.is_file():
+            base_for_report = base_for_report.parent
+        report_msg = merge_report_message(base_for_report)
+        if report_msg:
+            st.error(report_msg)
         st.info(
             "Carga un corpus guardado o corre primero la araña. "
             "Si Streamlit se cerró, usa la carpeta de salida para recuperar los JSON. "
