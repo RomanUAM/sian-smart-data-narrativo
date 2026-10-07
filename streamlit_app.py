@@ -129,6 +129,35 @@ def deduplicate_rows_for_analysis(rows: list[dict]) -> tuple[list[dict], list[di
     return list(kept.values()), duplicates
 
 
+def is_safe_clear_target(path_value: str) -> tuple[bool, Path, str]:
+    target = Path(path_value or "news_output").expanduser()
+    try:
+        resolved = target.resolve()
+        app_root = APP_ROOT.resolve()
+        cwd_root = Path.cwd().resolve()
+        allowed_roots = [app_root, cwd_root]
+        # Hosted scratch outputs are outside the checkout; only the generated
+        # session directory is allowed, never the collection-job store.
+        session_output = st.session_state.get("web_output_dir", "")
+        if session_output:
+            session_path = Path(session_output)
+            if (session_path.name == "news_output"
+                    and session_path.parent.name.startswith("sian-")
+                    and session_path.parent.parent.resolve() == Path(tempfile.gettempdir()).resolve()
+                    and not session_path.is_symlink()
+                    and not session_path.parent.is_symlink()):
+                allowed_roots.append(session_path.parent.resolve())
+    except (OSError, RuntimeError, ValueError) as exc:
+        return False, target, f"Ruta inválida: {exc}"
+    if resolved in {Path("/"), Path.home().resolve(), *allowed_roots}:
+        return False, resolved, "No se permite limpiar una raíz de trabajo."
+    if not any(root in resolved.parents for root in allowed_roots):
+        return False, resolved, "Sólo se limpian salidas del proyecto o de esta sesión."
+    if resolved.name not in {"news_output", "news_output_recleaned", "solver_output"} and "news_output" not in resolved.parts:
+        return False, resolved, "La ruta debe ser una carpeta de salida; las ejecuciones guardadas se conservan."
+    return True, resolved, ""
+
+
 def init_state() -> None:
     defaults = {
         "spider_running": False,
