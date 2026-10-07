@@ -2,6 +2,11 @@
 
 SIAN necesita Python 3.10 o superior e internet para consultar fuentes públicas. El análisis de corpus ya guardados no requiere nuevas descargas. La cuota es total anual entre fuentes y la operación vigente está en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md).
 
+## Proyecto propio y ejemplo opcional
+
+SIAN significa Sistema de Información y Análisis de Narrativas. La app inicia en Proyecto propio. El usuario puede cargar sus elementos JSON, JSONL, CSV o TXT, añadir un elemento manualmente y personalizar tema, rubros, fuentes y años. Autor, fuente y fecha son opcionales. Tatuaje se ofrece como ejemplo seleccionable; sus semillas, bases e informes no se incorporan automáticamente a otros proyectos.
+
+
 ## Instalar
 
 Desde la raíz del repositorio, en macOS o Linux:

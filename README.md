@@ -1,8 +1,14 @@
-# SIAN Smart Data Narrativo
+# SIAN Sistema de Información y Análisis de Narrativas
 
-SIAN reúne documentos públicos y organiza evidencia para analizar narrativas. Conserva procedencia, versiones, estados de autoría y fecha, y permite revisión humana de actores, conceptos, posturas y relaciones. Las señales automáticas son exploratorias: no demuestran opinión pública, intenciones ni causalidad social.
+SIAN significa **Sistema de Información y Análisis de Narrativas**. Reúne elementos proporcionados por el usuario y documentos públicos y organiza evidencia para analizar narrativas. Conserva procedencia, versiones, estados de autoría y fecha, y permite revisión humana de actores, conceptos, posturas y relaciones. Las señales automáticas son exploratorias: no demuestran opinión pública, intenciones ni causalidad social.
 
 La ejecución versión 3 usa un coordinador independiente de la página, tareas transaccionales y una meta total anual compartida entre fuentes. El contrato de registros permanece en versión 2. Noticias, foros, instituciones, artículos y reportes se conjugan conservando sus diferencias y conflictos. Seleccionar todos los rubros no multiplica la cuota.
+
+## Empezar con tus elementos
+
+La página inicia en **Proyecto propio**, sin tema ni semillas de tatuaje. En **Cargar tus elementos** puedes importar JSON, JSONL, CSV o TXT sin ejecutar búsquedas, o abrir **Añadir un elemento manualmente**. La plantilla CSV usa `titulo,texto,autor,fuente,fecha,url`; sólo se necesita contenido y los metadatos ausentes se conservan como faltantes. Para analizar por tema escribe tu consulta y tus rubros. Una fecha proporcionada no se considera comprobada automáticamente.
+
+**Ejemplo: tatuaje** carga el caso didáctico de tatuaje, sus rubros y semillas. Es opcional y editable. Las bases e informes sobre tatuaje ilustran el uso de SIAN; no definen el dominio del sistema ni se mezclan automáticamente con los elementos de otros proyectos.
 
 ## Abrir y recolectar
 
@@ -26,7 +32,7 @@ Cada documento se confirma en SQLite. La página muestra cobertura real por año
 
 Recargar o cerrar el navegador no cancela el proceso. Un reinicio del servidor puede interrumpirlo. Para recuperación automática después de perder el disco configurar un volumen persistente mediante `SIAN_DATA_DIR` o respaldo privado S3. Sin esa infraestructura hay que conservar el ZIP. No se guardan archivos automáticamente en la computadora del usuario.
 
-La acción **Fusionar bases por fuente** recibe códigos de ejecuciones y crea una base conjunta con procedencias. Importar JSON o JSONL crea una ejecución guardada. DOI y URL canónica definen identidad; las copias exactas entre URLs se conservan pero sólo una cuenta para la cuota.
+La acción **Fusionar bases por fuente** recibe códigos de ejecuciones y crea una base conjunta con procedencias. Importar JSON, JSONL, CSV o TXT crea una ejecución guardada; la captura manual también se conserva y puede descargarse. DOI y URL canónica definen identidad; las copias exactas entre URLs se conservan pero sólo una cuenta para la cuota.
 
 ## Fechas y calidad
 

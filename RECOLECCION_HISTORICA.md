@@ -4,6 +4,11 @@ Versión de ejecución 3. Fecha de revisión 7 de octubre de 2026. El contrato d
 
 SIAN construye una base común con documentos de distintas fuentes, conserva su procedencia y muestra lo que pudo recuperar. La meta de 200 documentos por año significa 200 documentos únicos seleccionados entre todas las capas. Las etiquetas temáticas no multiplican esa meta. Tener 200 registros no demuestra representatividad social ni permite concluir que las voces ausentes no existen.
 
+## Proyecto propio y ejemplo opcional
+
+SIAN significa Sistema de Información y Análisis de Narrativas. La app inicia en Proyecto propio. El usuario puede cargar sus elementos JSON, JSONL, CSV o TXT, añadir un elemento manualmente y personalizar tema, rubros, fuentes y años. Autor, fuente y fecha son opcionales. Tatuaje se ofrece como ejemplo seleccionable; sus semillas, bases e informes no se incorporan automáticamente a otros proyectos.
+
+
 ## Unidad y criterios de selección
 
 La unidad es el documento, identificado por DOI cuando existe o por URL canónica. Cada documento conserva versiones de texto, recuperaciones y estados de evidencia. Autor, publicación y fuente se buscan; una búsqueda puede terminar sin encontrarlos. Una ausencia de autor no impide por sí sola incluir un documento en la muestra temporal.

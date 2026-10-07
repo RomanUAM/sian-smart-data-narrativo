@@ -2,6 +2,11 @@
 
 SIAN reúne evidencia pública en un corpus común con procedencias, versiones y revisiones. La versión de ejecución 3 separa la página, el coordinador, los lectores, la política de selección y el análisis. El contrato de registros permanece en versión 2. La especificación operativa completa está en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md).
 
+## Proyecto propio y ejemplo opcional
+
+SIAN significa Sistema de Información y Análisis de Narrativas. La app inicia en Proyecto propio. El usuario puede cargar sus elementos JSON, JSONL, CSV o TXT, añadir un elemento manualmente y personalizar tema, rubros, fuentes y años. Autor, fuente y fecha son opcionales. Tatuaje se ofrece como ejemplo seleccionable; sus semillas, bases e informes no se incorporan automáticamente a otros proyectos.
+
+
 ## Recorrido de la información
 
 ```mermaid

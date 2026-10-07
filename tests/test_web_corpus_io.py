@@ -37,3 +37,26 @@ class WebCorpusTests(unittest.TestCase):
             self.assertEqual(parse_corpus_upload(path.read_bytes(),path.name),rows)
             save_collected_rows(tmp,[],False)
             self.assertEqual(json.loads((Path(tmp)/'news_records.json').read_text()),[])
+
+    def test_csv_other_topic_and_optional_metadata(self):
+        rows = parse_corpus_upload('titulo,texto,autor,fuente,fecha,published_date_verified\nAgua,Experiencia pública sobre abastecimiento,Persona,Entrevista,2020-01-02,false\n'.encode(), 'elementos.csv')
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['title'], 'Agua')
+        self.assertIn('abastecimiento', rows[0]['text_clean'])
+        self.assertFalse(rows[0]['published_date_verified'])
+        self.assertNotIn('tatuaje', str(rows).lower())
+
+    def test_txt_does_not_invent_author_date_or_url(self):
+        rows = parse_corpus_upload('Mi relato sobre transporte público.'.encode(), 'relato.txt')
+        self.assertEqual(rows[0]['text_clean'], 'Mi relato sobre transporte público.')
+        self.assertFalse(rows[0].get('published_date_verified'))
+        self.assertFalse(rows[0].get('published_date'))
+        self.assertFalse(rows[0].get('author'))
+        with self.assertRaises(ValueError):
+            parse_corpus_upload(b'   ', 'empty.txt')
+
+    def test_json_spanish_element_fields(self):
+        rows = parse_corpus_upload(json.dumps([{'titulo': 'Movilidad', 'texto': 'Relato sobre movilidad urbana.', 'fecha': '2020-02-01', 'published_date_verified': 'false'}]).encode(), 'elementos.json')
+        self.assertEqual(rows[0]['title'], 'Movilidad')
+        self.assertEqual(rows[0]['text_clean'], 'Relato sobre movilidad urbana.')
+        self.assertFalse(rows[0]['published_date_verified'])

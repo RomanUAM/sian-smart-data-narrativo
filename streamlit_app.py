@@ -6,6 +6,7 @@ from corpus_contract import identity_key, merge_record, merge_rows as contract_m
 from collections import Counter, defaultdict
 from itertools import combinations
 import json
+import csv
 import hashlib
 import queue
 import random
@@ -89,7 +90,7 @@ from structural_narrative import (
 )
 
 
-st.set_page_config(page_title="SIAN · Smart Data Narrativo", layout="wide")
+st.set_page_config(page_title="SIAN · Sistema de Información y Análisis de Narrativas", layout="wide")
 
 APP_ROOT = Path(__file__).resolve().parent
 
@@ -1388,21 +1389,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "toda conclusión debe revisar sesgos de fuente, idioma, plataforma, región y exclusiones."
         )
 
-    uploads = st.file_uploader("Importar corpus desde tu computadora (JSON o JSONL)", type=["json", "jsonl"], accept_multiple_files=True, key="corpus_uploads")
-    if st.button("Cargar archivos importados", disabled=not uploads or st.session_state.spider_running):
-        try:
-            imported = contract_merge_rows([row for upload in uploads for row in parse_corpus_upload(upload.getvalue(), upload.name)])
-            from collection_jobs import Job,job_base
-            imported_job=Job.create(job_base(),dict(config),[])
-            for row in imported:imported_job.ingest(row)
-            _,report=imported_job.export()
-            imported_job.set('status','target_met' if report['target_met'] else 'finished_with_gaps')
-            imported_job.export()
-            st.session_state.collection_job=imported_job.root.name
-            st.query_params['job']=imported_job.root.name
-            drain_queue();st.rerun()
-        except (ValueError, UnicodeError, OSError) as exc:
-            st.error(f"No se importó el corpus: {exc}")
+    st.caption("Puedes cargar elementos propios al inicio de la página, en Cargar tus elementos.")
 
     col_path, col_button = st.columns([3, 1])
     with col_path:
@@ -3490,7 +3477,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
 init_state()
 drain_queue()
 
-st.title("SIAN · Smart Data Narrativo")
+st.title("SIAN · Sistema de Información y Análisis de Narrativas")
 st.caption(
     "Sistema local para recolectar fuentes públicas, balancear capas discursivas y diseccionar narrativas "
     "mediante grafos, Smart Data, proposiciones, marcos, deltas, silencios y trazabilidad técnica."
@@ -3815,10 +3802,8 @@ CONNECTOR_ONLY_TERMS = {
 
 def default_variant_rubrics_for_query(query: str) -> dict[str, list[str]]:
     lowered = normalize_local(query)
-    if "tatu" in lowered or "tattoo" in lowered:
+    if st.session_state.get("project_mode") == "Ejemplo: tatuaje" and ("tatu" in lowered or "tattoo" in lowered):
         return VARIANT_RUBRIC_PRESETS["Tatuaje / tattoo"]
-    if "ia" in lowered or "ai" in lowered or "program" in lowered or "copilot" in lowered:
-        return VARIANT_RUBRIC_PRESETS["IA y programación"]
     return {"núcleo": [query.strip()] if query.strip() else []}
 
 
@@ -5160,7 +5145,12 @@ def graph_structural_summary(graph: dict) -> list[dict]:
 
 with st.sidebar:
     st.header("Parámetros")
-    query = st.text_input("Tema / consulta", value="tatuaje", disabled=st.session_state.spider_running)
+    project_mode = st.selectbox("Punto de partida", ["Proyecto propio", "Ejemplo: tatuaje"], key="project_mode", disabled=st.session_state.spider_running)
+    example_tattoo = project_mode == "Ejemplo: tatuaje"
+    project_key = "example" if example_tattoo else "own"
+    saved_query = st.session_state.get("spider_config", {}).get("query", "")
+    query = st.text_input("Tema / consulta", value=saved_query or ("tatuaje" if example_tattoo else ""), key=f"query_{project_key}", placeholder="Escribe el tema de tu proyecto", disabled=st.session_state.spider_running)
+    st.caption("Tatuaje es un caso de ejemplo opcional. Puedes usar otro tema, tus rubros y tus documentos.")
     query_variants_text = st.text_area(
         "Variantes base opcionales",
         value="",
@@ -5171,9 +5161,10 @@ with st.sidebar:
         "Rubros de variantes / sinónimos",
         value=variant_rubrics_to_text(default_variant_rubrics_for_query(query)),
         height=230,
+        key=f"rubrics_{project_key}_{query}",
         help=(
             "Formato: rubro: término, término. "
-            "No metas conectores como variantes. Mejor 'tatuaje empleo' que 'tatuaje y empleo'. "
+            "Escribe variantes sustantivas del tema; evita conectores aislados. "
             "Los términos guían la búsqueda y los rubros se etiquetan en el texto recuperado."
         ),
         disabled=st.session_state.spider_running,
@@ -5204,7 +5195,8 @@ with st.sidebar:
     source_preset_choices = st.multiselect(
         "Fuentes básicas automáticas",
         options=list(SOURCE_PRESETS),
-        default=["Noticias México", "Noticias mundo / diarios internacionales"],
+        default=["Noticias México", "Noticias mundo / diarios internacionales"] if example_tattoo else ["Sin limitar fuentes"],
+        key=f"sources_{project_key}",
         help=(
             "Estos paquetes funcionan como semilla de dominios. No sustituyen las URLs semilla: "
             "inician la búsqueda en medios auditables por región/idioma. Usa 'Sin limitar fuentes' sólo para exploración amplia."
@@ -5284,7 +5276,8 @@ with st.sidebar:
     exclusion_preset = st.selectbox(
         "Filtro de exclusión conceptual",
         options=list(EXCLUSION_PRESETS),
-        index=list(EXCLUSION_PRESETS).index("Tatuaje corporal/social: excluir cigarros y usos médicos") if "tatu" in query.lower() else 0,
+        index=list(EXCLUSION_PRESETS).index("Tatuaje corporal/social: excluir cigarros y usos médicos") if example_tattoo else 0,
+        key=f"exclusions_{project_key}",
         help="Sirve para quitar homónimos o dominios contaminantes antes del análisis.",
         disabled=st.session_state.spider_running,
     )
@@ -5364,19 +5357,22 @@ with st.sidebar:
     default_institutional_seed_path = APP_ROOT / "seed_sources" / "tatuaje_institutional_seed_urls.json"
     default_academic_seed_path = APP_ROOT / "seed_sources" / "tatuaje_academic_seed_urls.json"
     use_seed_urls = st.checkbox(
-        "Usar URLs semilla de noticias mexicanas",
-        value=default_seed_path.exists() and "tatu" in query.lower(),
+        "Usar URLs semilla de noticias",
+        value=default_seed_path.exists() and example_tattoo,
+        key=f"use_news_seed_{project_key}",
         help="Procesa URLs curadas como noticias directas; útil cuando GDELT/Google no encuentran medios conocidos.",
         disabled=st.session_state.spider_running,
     )
     seed_url_file = st.text_input(
         "Archivo JSON de URLs semilla",
-        value=str(default_seed_path) if default_seed_path.exists() else "",
+        value=str(default_seed_path) if example_tattoo and default_seed_path.exists() else "",
+        key=f"default_seed_path_{project_key}",
         disabled=st.session_state.spider_running or not use_seed_urls,
     )
     use_forum_seed_urls = st.checkbox(
         "Usar URLs semilla de blogs/foros públicos",
-        value=default_forum_seed_path.exists() and "tatu" in query.lower(),
+        value=default_forum_seed_path.exists() and example_tattoo,
+        key=f"use_forum_seed_{project_key}",
         help=(
             "No depende de GDELT ni Reddit. Usa una lista curada de blogs, WordPress/Blogspot y señales conversacionales públicas. "
             "Debe reportarse como muestra pública parcial, no como conversación social completa."
@@ -5385,12 +5381,14 @@ with st.sidebar:
     )
     forum_seed_url_file = st.text_input(
         "Archivo JSON de URLs semilla conversacionales",
-        value=str(default_forum_seed_path) if default_forum_seed_path.exists() else "",
+        value=str(default_forum_seed_path) if example_tattoo and default_forum_seed_path.exists() else "",
+        key=f"default_forum_seed_path_{project_key}",
         disabled=st.session_state.spider_running or not use_forum_seed_urls,
     )
     use_institutional_seed_urls = st.checkbox(
         "Usar URLs semilla de gobierno/instituciones",
-        value=default_institutional_seed_path.exists() and "tatu" in query.lower(),
+        value=default_institutional_seed_path.exists() and example_tattoo,
+        key=f"use_institutional_seed_{project_key}",
         help=(
             "Procesa primero páginas oficiales abiertas de COFEPRIS/gob.mx/organismos. "
             "Esto evita que la capa institucional dependa sólo de GDELT, que suele limitar o no indexar bien documentos públicos."
@@ -5399,12 +5397,14 @@ with st.sidebar:
     )
     institutional_seed_url_file = st.text_input(
         "Archivo JSON de URLs semilla institucionales",
-        value=str(default_institutional_seed_path) if default_institutional_seed_path.exists() else "",
+        value=str(default_institutional_seed_path) if example_tattoo and default_institutional_seed_path.exists() else "",
+        key=f"default_institutional_seed_path_{project_key}",
         disabled=st.session_state.spider_running or not use_institutional_seed_urls,
     )
     use_academic_seed_urls = st.checkbox(
         "Usar semillas controladas de artículos científicos",
-        value=default_academic_seed_path.exists() and "tatu" in query.lower(),
+        value=default_academic_seed_path.exists() and example_tattoo,
+        key=f"use_academic_seed_{project_key}",
         help=(
             "Procesa papers curados por DOI/URL/PDF. Este es el modo correcto para controlar Google Scholar manualmente: "
             "copias títulos/DOI/PDF abiertos como semillas y el sistema descarga sólo lo permitido."
@@ -5413,7 +5413,8 @@ with st.sidebar:
     )
     academic_seed_url_file = st.text_input(
         "Archivo JSON de semillas académicas",
-        value=str(default_academic_seed_path) if default_academic_seed_path.exists() else "",
+        value=str(default_academic_seed_path) if example_tattoo and default_academic_seed_path.exists() else "",
+        key=f"default_academic_seed_path_{project_key}",
         disabled=st.session_state.spider_running or not use_academic_seed_urls,
     )
     seed_domains_preview = domains_from_seed_file(seed_url_file) if use_seed_urls and seed_url_file else []
@@ -5589,6 +5590,53 @@ config = {
     "min_text_chars": int(min_chars),
     "output_dir": output_dir,
 }
+
+st.subheader("Cargar tus elementos")
+st.caption("Importa documentos de cualquier tema. Autor, fuente y fecha son opcionales; no se inventan los datos ausentes. La búsqueda en internet es una ruta adicional.")
+uploads = st.file_uploader("Archivos de elementos (JSON, JSONL, CSV o TXT)", type=["json", "jsonl", "csv", "txt"], accept_multiple_files=True, key="project_uploads")
+
+def store_user_elements(elements):
+    from collection_jobs import Job, job_base
+    import_config = dict(config)
+    import_config['query'] = query.strip()
+    job = Job.create(job_base(), import_config, [])
+    for row in elements:
+        job.ingest(row)
+    job.set('status', 'imported')
+    job.log(f"Importados {len(elements)} elementos proporcionados por el usuario; sin búsquedas automáticas.")
+    job.export()
+    st.session_state.collection_job = job.root.name
+    st.query_params['job'] = job.root.name
+    drain_queue()
+
+if st.button("Cargar mis archivos", disabled=not uploads or st.session_state.spider_running):
+    try:
+        imported = contract_merge_rows([row for upload in uploads for row in parse_corpus_upload(upload.getvalue(), upload.name)])
+        if not imported:
+            raise ValueError("Los archivos no contienen elementos.")
+        store_user_elements(imported)
+        st.rerun()
+    except (ValueError, UnicodeError, OSError, csv.Error) as exc:
+        st.error(f"No se importaron los elementos: {exc}")
+with st.expander("Añadir un elemento manualmente"):
+    with st.form("manual_element"):
+        element_title = st.text_input("Título del elemento")
+        element_text = st.text_area("Texto del elemento")
+        element_url = st.text_input("URL de origen (opcional)")
+        element_author = st.text_input("Autor (opcional)")
+        element_source = st.text_input("Fuente o medio (opcional)")
+        element_date = st.text_input("Fecha de publicación (opcional, AAAA-MM-DD)")
+        date_verified = st.checkbox("Comprobé esta fecha en la fuente original")
+        add_element = st.form_submit_button("Guardar elemento", disabled=st.session_state.spider_running)
+    if add_element:
+        if not element_text.strip():
+            st.error("Escribe el texto del elemento.")
+        else:
+            element = dict(title=element_title.strip() or "Elemento sin título", text_clean=element_text.strip(), url=element_url.strip(), author=element_author.strip(), medium=element_source.strip(), published_date=element_date.strip(), published_date_verified=bool(element_date.strip() and date_verified), status="ok", source_api="user_manual_input", source_type="other")
+            existing = st.session_state.get('spider_rows', [])
+            store_user_elements(contract_merge_rows([*existing, element]))
+            st.rerun()
+st.download_button("Descargar plantilla CSV para tus elementos", "titulo,texto,autor,fuente,fecha,url\n", "SIAN_plantilla_elementos.csv", "text/csv")
 
 st.subheader("Diseño de recolección")
 st.write(config)
@@ -5767,7 +5815,7 @@ if selected_source_run or run or run_sequential:
         run_config['classification_rubrics']=selected_variant_rubrics
         run_config['sequential_source_layers']=config['sequential_source_layers']
         for layer in run_config['sequential_source_layers']:
-            if layer['source_collection']=='forums':layer['domains']=merge_unique([*SOURCE_PRESETS.get('Foros / práctica profesional',[]),*SOURCE_PRESETS.get('Foros sobre tatuajes',[])])
+            if layer['source_collection']=='forums':layer['domains']=merge_unique([*SOURCE_PRESETS.get('Foros / práctica profesional',[]),*(SOURCE_PRESETS.get('Foros sobre tatuajes',[]) if example_tattoo else [])])
             elif layer['source_collection']=='institutional':layer['domains']=merge_unique([*SOURCE_PRESETS.get('Gobierno México / instituciones públicas',[]),*SOURCE_PRESETS.get('Gobierno global / organismos internacionales',[])])
         tasks=historical_plan(run_config)
         st.info(f"Plan histórico: {len(tasks)} tareas recuperables; meta total {target_total_per_year} documentos por año. Los rubros se clasifican después de recuperar el texto.")
@@ -5790,7 +5838,7 @@ if selected_source_run or run or run_sequential:
         if source_key == "forums":
             run_config["domains"] = merge_unique([
                 *SOURCE_PRESETS.get("Foros / práctica profesional", []),
-                *SOURCE_PRESETS.get("Foros sobre tatuajes", []),
+                *(SOURCE_PRESETS.get("Foros sobre tatuajes", []) if example_tattoo else []),
             ])
         if source_key == "institutional":
             run_config["domains"] = merge_unique([
