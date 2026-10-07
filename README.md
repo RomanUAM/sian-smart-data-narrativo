@@ -10,6 +10,8 @@ La página inicia en **Proyecto propio**, sin tema ni semillas de tatuaje. En **
 
 **Ejemplo: tatuaje** carga el caso didáctico de tatuaje, sus rubros y semillas. Es opcional y editable. Las bases e informes sobre tatuaje ilustran el uso de SIAN; no definen el dominio del sistema ni se mezclan automáticamente con los elementos de otros proyectos.
 
+La pantalla muestra un resumen de tema, región, años, capas de fuentes y meta anual. **Ver diseño de recolección** permite abrir la configuración detallada y las estrategias de las semillas; inicia cerrado.
+
 ## Abrir y recolectar
 
 ```bash

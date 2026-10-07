@@ -5641,32 +5641,45 @@ with st.expander("Añadir un elemento manualmente"):
             st.rerun()
 st.download_button("Descargar plantilla CSV para tus elementos", "titulo,texto,autor,fuente,fecha,url\n", "SIAN_plantilla_elementos.csv", "text/csv")
 
-st.subheader("Diseño de recolección")
-st.write(config)
-source_strategy_rows = source_strategy_rows_from_seed_file(
-    config.get("seed_url_file", ""),
-    query,
-    query_variants,
-    geographic_terms,
+st.subheader("Resumen de recolección")
+st.dataframe(
+    [{
+        "Tema": query.strip() or "Por definir",
+        "Región": geographic_choice,
+        "Años": f"{int(start_year)}–{int(end_year)}",
+        "Fuentes": ", ".join(sequential_source_layer_labels) or "Sin capas seleccionadas",
+        "Meta anual": f"{int(target_total_per_year)} documentos únicos",
+    }],
+    use_container_width=True,
+    hide_index=True,
 )
-if source_strategy_rows:
-    st.markdown("Estrategias aprendidas del corpus semilla por medio")
-    st.caption(
-        "El corpus semilla no sustituye la búsqueda: extrae dominios, secciones y patrones de URL para buscar más noticias dentro de cada medio."
+with st.expander("Ver diseño de recolección", expanded=False):
+    st.caption("Consulta los términos de búsqueda, los criterios de inclusión y exclusión y la configuración completa.")
+    st.write(config)
+    source_strategy_rows = source_strategy_rows_from_seed_file(
+        config.get("seed_url_file", ""),
+        query,
+        query_variants,
+        geographic_terms,
     )
-    st.dataframe(source_strategy_rows, use_container_width=True, hide_index=True)
-forum_source_strategy_rows = source_strategy_rows_from_seed_file(
-    config.get("seed_url_files_by_source", {}).get("forums", ""),
-    query,
-    query_variants,
-    geographic_terms,
-)
-if forum_source_strategy_rows:
-    st.markdown("Estrategias aprendidas de semillas conversacionales")
-    st.caption(
-        "Estas fuentes son blogs/foros públicos curados. Funcionan como capa humana parcial cuando GDELT/Reddit se bloquean."
+    if source_strategy_rows:
+        st.markdown("Estrategias aprendidas del corpus semilla por medio")
+        st.caption(
+            "El corpus semilla no sustituye la búsqueda: extrae dominios, secciones y patrones de URL para buscar más noticias dentro de cada medio."
+        )
+        st.dataframe(source_strategy_rows, use_container_width=True, hide_index=True)
+    forum_source_strategy_rows = source_strategy_rows_from_seed_file(
+        config.get("seed_url_files_by_source", {}).get("forums", ""),
+        query,
+        query_variants,
+        geographic_terms,
     )
-    st.dataframe(forum_source_strategy_rows, use_container_width=True, hide_index=True)
+    if forum_source_strategy_rows:
+        st.markdown("Estrategias aprendidas de semillas conversacionales")
+        st.caption(
+            "Estas fuentes son blogs/foros públicos curados. Funcionan como capa humana parcial cuando GDELT/Reddit se bloquean."
+        )
+        st.dataframe(forum_source_strategy_rows, use_container_width=True, hide_index=True)
 
 profile_rows = source_profile_rows(domains, include_forums=True) if domains else source_profile_rows(include_forums=True)
 with st.expander("Catálogo auditable de fuentes base"):
