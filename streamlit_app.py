@@ -1,4 +1,5 @@
 from __future__ import annotations
+from geographic_scope import scope_terms
 from web_corpus_io import parse_corpus_upload, saved_files, corpus_archive, save_collected_rows
 from corpus_storage import atomic_write
 from corpus_contract import identity_key, merge_record, merge_rows as contract_merge_rows
@@ -3485,7 +3486,7 @@ st.caption(
 
 GEOGRAPHIC_PRESETS = {
     "Global / sin límite regional": [],
-    "México": ["Mexico", "México", "Mexican", "mexicano", "mexicana"],
+    "México": scope_terms("México"),
     "América Latina": ["Latin America", "América Latina", "Latinoamérica", "Latin American", "latinoamericano", "latinoamericana"],
     "Iberoamérica": ["Iberoamérica", "Iberoamerica", "Spain", "España", "Latin America", "América Latina"],
     "Personalizado": [],
@@ -5183,6 +5184,8 @@ with st.sidebar:
         index=0,
         disabled=st.session_state.spider_running,
     )
+    if geographic_choice == "México":
+        st.caption("México incluye automáticamente sus 32 entidades federativas, incluida CDMX. Las coincidencias geográficas se revisan en el texto.")
     default_geo_terms = ", ".join(GEOGRAPHIC_PRESETS[geographic_choice])
     geographic_terms_text = st.text_area(
         "Términos geográficos que se agregan a la búsqueda",

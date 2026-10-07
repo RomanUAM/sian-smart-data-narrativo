@@ -17,7 +17,7 @@ python -m pip install -r requirements.txt
 python -m streamlit run streamlit_app.py
 ```
 
-En la página configurar tema, región, años, texto mínimo y meta total anual. La acción histórica con todas las capas crea una ejecución recuperable. El caso de tatuaje usa 2016 al presente, todos los rubros y 200 documentos únicos por año. La búsqueda debe intentarlo, pero la disponibilidad de fuentes puede dejar brechas.
+En la página configurar tema, región, años, texto mínimo y meta total anual. **México incluye automáticamente sus 32 entidades federativas, incluida Ciudad de México** en los términos de búsqueda y filtrado; también reconoce CDMX y Edomex. Se puede agregar vocabulario local. La coincidencia de un nombre territorial es una señal para revisión, no prueba suficiente de que todo el documento trate del país. El país del medio sigue separado del lugar del tema. La acción histórica con todas las capas crea una ejecución recuperable. El caso de tatuaje usa 2016 al presente, todos los rubros y 200 documentos únicos por año. La búsqueda debe intentarlo, pero la disponibilidad de fuentes puede dejar brechas.
 
 Para preparar el caso por comandos sin iniciar búsquedas:
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 from source_adapters import cached_source
+from geographic_scope import scope_terms, AMBIGUOUS_MEXICO_NAMES
 
 import argparse
 import datetime as dt
@@ -1333,12 +1334,16 @@ def passes_geographic_filter(
     scope = strip_for_compare(geographic_scope)
     if not scope or scope.startswith("global") or scope == "sin limite regional":
         return True, "global_scope"
-    terms = clean_query_variants("", geographic_terms)
+    terms = clean_query_variants("", scope_terms(geographic_scope, geographic_terms))
     if not terms:
         return False, "scope_requires_geographic_terms"
     haystack = strip_for_compare(" ".join([title, text[:4000]]))
     normalized_terms = [strip_for_compare(term) for term in terms if strip_for_compare(term)]
     for term in normalized_terms:
+        if scope in {"mexico", "mx"} and term in AMBIGUOUS_MEXICO_NAMES:
+            context = rf"(?:en|desde|estado de|ciudad de|gobierno de|municipio de|habitantes de|tatuadores de|tatuadoras de)\s+(?:el estado de\s+)?{re.escape(term)}(?![a-z0-9])"
+            if not re.search(rf"(?<![a-z0-9]){context}", haystack):
+                continue
         if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", haystack):
             return True, f"subject_geo_term:{term}"
     return False, "missing_subject_geographic_signal"
@@ -2065,7 +2070,7 @@ def crawl_news(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     clean_variants = clean_query_variants(query, query_variants)[1:]
-    clean_geographic_terms = clean_query_variants("", geographic_terms)
+    clean_geographic_terms = clean_query_variants("", scope_terms(geographic_scope, geographic_terms))
     clean_exclude_terms = clean_query_variants("", exclude_terms)
     clean_exclude_domains = [
         domain.strip().lower().replace("https://", "").replace("http://", "").strip("/")

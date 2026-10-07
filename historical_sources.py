@@ -2,6 +2,7 @@
 
 Sitemap lastmod is deliberately never promoted to a publication date.
 """
+from geographic_scope import scope_terms
 import datetime as dt
 import json
 import urllib.parse
@@ -24,6 +25,7 @@ CAPABILITIES = {
 }
 
 def plan(config, layers=None, today=None):
+    config = {**config, 'geographic_terms': scope_terms(config.get('geographic_scope', ''), config.get('geographic_terms'))}
     today=today or dt.date.today()
     first,last=int(config['start_year']),min(int(config['end_year']),today.year)
     if first>last:raise ValueError('Intervalo de años inválido.')

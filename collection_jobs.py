@@ -16,6 +16,7 @@ from pathlib import Path
 from corpus_contract import identity_key, merge_record
 from corpus_storage import atomic_json, atomic_write
 from collection_policy import assess
+from geographic_scope import scope_terms
 
 class Job:
     def __init__(self, root):
@@ -33,7 +34,7 @@ class Job:
     @classmethod
     def create(cls, base, config, tasks):
         job=cls(Path(base)/secrets.token_hex(16))
-        config={**config,'output_dir':str(job.root),'collection_version':3}
+        config={**config,'output_dir':str(job.root),'collection_version':3,'geographic_terms':scope_terms(config.get('geographic_scope',''),config.get('geographic_terms'))}
         job.set('config',config);job.set('created_at',dt.datetime.now(dt.UTC).isoformat());job.set('status','ready');job.set('pause',False)
         # Snapshot selected seed files so restoring a ZIP cannot read arbitrary server paths.
         seed_payload={}
