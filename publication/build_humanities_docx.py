@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from evidence_docx_policy import append_evidence_policy
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -179,6 +180,7 @@ def build_es() -> None:
         "La selección de nodos relevantes puede formalizarse como cobertura sobre el mapa de relaciones. Se buscan conjuntos pequeños de nodos que mantengan alta relevancia y bajo daño estructural. "
         "Los detalles algorítmicos quedan como apéndice porque la pregunta principal es interpretativa."
     )
+    append_evidence_policy(doc)
     doc.save(OUT / "corpus_narrativo_tatuaje_humanidades_es.docx")
 
 
@@ -284,6 +286,7 @@ def build_en() -> None:
         "The selection of relevant nodes can be formalized as coverage over the map of relations. The goal is to find small node sets that preserve high relevance and low structural damage. "
         "Algorithmic details remain in an appendix because the main question is interpretive."
     )
+    append_evidence_policy(doc, english=True)
     doc.save(OUT / "narrative_tattoo_corpus_humanities_en.docx")
 
 

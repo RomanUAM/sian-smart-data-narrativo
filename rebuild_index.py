@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from corpus_storage import atomic_write
 
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from corpus_contract import is_record, merge_rows
 
 
 def read_record(file_path: Path) -> dict | None:
@@ -11,12 +13,12 @@ def read_record(file_path: Path) -> dict | None:
         data = json.loads(file_path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    return data if isinstance(data, dict) else None
+    return data if is_record(data) else None
 
 
 def rebuild_index(output_dir: str | Path = "news_output") -> list[dict]:
     output_dir = Path(output_dir)
-    records_by_url: dict[str, dict] = {}
+    source_rows = []
     skipped = 0
 
     files = [
@@ -31,16 +33,12 @@ def rebuild_index(output_dir: str | Path = "news_output") -> list[dict]:
             if not data:
                 skipped += 1
                 continue
-            key = data.get("url") or str(futures[future])
-            records_by_url[key] = data
+            source_rows.append(data)
 
-    records = list(records_by_url.values())
+    records = merge_rows(source_rows)
     records.sort(key=lambda item: (item.get("year") or 0, item.get("medium") or "", item.get("title") or ""))
 
-    (output_dir / "news_records.json").write_text(
-        json.dumps(records, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    atomic_write(output_dir / 'news_records.json', json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
     with (output_dir / "news_records.jsonl").open("w", encoding="utf-8") as fh:
         for record in records:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")

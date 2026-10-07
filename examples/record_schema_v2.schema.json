@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SIAN record v2",
+  "type": "object",
+  "required": [
+    "record_schema_version",
+    "document_id",
+    "version_id",
+    "retrieval_id",
+    "record_information",
+    "selection",
+    "content_kind",
+    "versions",
+    "retrievals",
+    "record_history",
+    "geography",
+    "dates",
+    "stage_states"
+  ],
+  "properties": {
+    "record_schema_version": {
+      "const": 2
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "retrieval_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "content_kind": {
+      "enum": [
+        "title",
+        "abstract",
+        "fragment",
+        "full_text",
+        "none"
+      ]
+    },
+    "record_information": {
+      "type": "object",
+      "required": [
+        "author",
+        "publication_source",
+        "publication_date",
+        "update_date",
+        "consultation_date",
+        "text"
+      ],
+      "additionalProperties": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "selection": {
+      "type": "object",
+      "required": [
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "candidate",
+            "pending",
+            "included",
+            "excluded"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "versions": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "retrievals": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "record_history": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "document_relations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "geography": {
+      "type": "object",
+      "required": [
+        "subject",
+        "publisher",
+        "participants"
+      ]
+    },
+    "dates": {
+      "type": "object",
+      "required": [
+        "publication",
+        "update",
+        "consultation",
+        "event",
+        "study_period"
+      ]
+    },
+    "stage_states": {
+      "type": "object",
+      "required": [
+        "discovery",
+        "retrieval",
+        "extraction",
+        "selection",
+        "review",
+        "analysis"
+      ]
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "required": [
+        "value",
+        "state"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "explicit",
+            "inferred",
+            "not_found",
+            "not_evaluable",
+            "not_applicable",
+            "conflicting"
+          ]
+        }
+      }
+    }
+  }
+}

@@ -481,3 +481,43 @@ Y comparar por tipo de evidencia:
 - La clasificación de tipo de fuente es una primera capa automática; conviene auditar manualmente una muestra de cada tipo.
 - Si necesitas corpus académico/publicable, conviene revisar una muestra manualmente para estimar error de extracción.
 - Cada corrida desde la app guarda `run_manifest.json`; las corridas secuenciales guardan además `query_plan.json`. Para publicación estricta todavía conviene añadir hash final del corpus y auditoría manual por muestra/fuente.
+
+
+## Actualización de evidencia: 6 de octubre de 2026
+
+La disponibilidad de autor, fecha, fuente, actores o postura no se garantiza.
+Cada campo conserva valor, evidencia, método y estado; los faltantes no son cero.
+La publicación se separa de actualización, consulta y año de búsqueda.
+Cada análisis informa su subconjunto utilizable y cobertura. Los resultados
+heurísticos son candidatos; las afirmaciones y relaciones revisadas requieren
+fragmentos de respaldo. Un enlace PDF no equivale a texto completo recuperado.
+
+La especificación vigente, modelos descriptivos y pseudocódigos están en
+[EVIDENCIA_Y_MODELOS.md](EVIDENCIA_Y_MODELOS.md). Esta política prevalece sobre
+supuestos de completitud de versiones anteriores. Los documentos históricos
+conservan sus límites y no se recalculan por actualizar el software.
+
+### Auditoría integral y exportación relacional
+
+El contrato de identidad y fusión está centralizado en `corpus_contract.py`; la
+interfaz y los comandos usan las mismas reglas. El informe de revisión y el piloto
+tatuaje 2016–2026 están en `AUDITORIA_INTEGRAL_2026-10-06.md`. El piloto contiene
+candidatos y bibliografía parcial, no una muestra representativa.
+
+```bash
+python3 scripts/export_corpus_database.py news_output/news_records.json --output corpus_database
+```
+
+
+## Arquitectura y registros v2 (6 de octubre de 2026)
+
+El contrato versionado separa documento, versión y recuperación. Las etapas tienen
+puntos de control íntegros y reanudación; los lectores públicos usan caché y
+reintentos limitados. La selección revisada requiere motivo, evidencia y revisor,
+y los cambios invalidan revisiones dependientes. Las escrituras de corpus y
+manifiestos son atómicas y el registro SQLite es transaccional.
+
+El ejecutor de corpus guardados organiza evidencia existente; no simula nuevas
+descargas ni revisión humana. Títulos, resúmenes y fragmentos se distinguen, y la
+cobertura de búsqueda requiere un denominador independiente. La especificación,
+pseudocódigo y comandos están en `ARQUITECTURA_REGISTROS_V2.md`.

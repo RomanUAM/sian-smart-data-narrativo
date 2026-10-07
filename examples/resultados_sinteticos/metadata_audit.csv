@@ -1,0 +1,13 @@
+document_id,title,field,value,state,method,precision,evidence
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,author,,not_found,legacy_import,,
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,publication_date,2020,explicit,legacy_import,year,record.published_date
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,update_date,,not_evaluable,legacy_import,,
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,consultation_date,,not_evaluable,legacy_import,,
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,publication_source,Fuente demostrativa,explicit,legacy_import,,record.medium
+1fb5432d632f4c4b5d7aa2e4,Ejemplo sintético: no es evidencia empírica,text,47 caracteres,explicit,local_extraction,,record.text
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,author,,not_evaluable,legacy_import,,
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,publication_date,,not_evaluable,legacy_import,,
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,update_date,,not_evaluable,legacy_import,,
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,consultation_date,,not_evaluable,legacy_import,,
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,publication_source,example.org,inferred,domain_only,,url.hostname
+1d1fb744641f2fcbd24ca9e1,Ejemplo sintético sin autor ni fecha,text,55 caracteres,explicit,local_extraction,,record.text

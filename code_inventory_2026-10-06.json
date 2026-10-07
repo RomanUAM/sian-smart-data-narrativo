@@ -1,0 +1,224 @@
+[
+  {
+    "path": "corpus_contract.py",
+    "lines": 90,
+    "sha256": "b4a39dff33045e548a6dfa72e1d6d06245d1311c4cd891bda15ed6f239eb1336",
+    "functions": 4,
+    "syntax": "passed"
+  },
+  {
+    "path": "corpus_pipeline.py",
+    "lines": 81,
+    "sha256": "94a7575b49be6d3523feb6b3e828a35accf42904b1386f76d7bb0f6538f59b0a",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "corpus_storage.py",
+    "lines": 50,
+    "sha256": "66cea979d0ce02818ef7fe6806a23d5daea6abdce856b92b8d42dd49dba4baef",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "evidence_model.py",
+    "lines": 375,
+    "sha256": "883453745d441e0b5d6cd6690f058f88288629d36a26bc58844d4d3fdb47f194",
+    "functions": 17,
+    "syntax": "passed"
+  },
+  {
+    "path": "iniciar_spider.command",
+    "lines": 3,
+    "sha256": "75f46c74bdb97e9ceb53f0dc9ed9c22232701c57f7aa18dfa7a1c43a29a6f6e7",
+    "syntax": "passed"
+  },
+  {
+    "path": "narrative_analysis.py",
+    "lines": 3506,
+    "sha256": "a30aa9f016bafd7918bde74cafc323cf7a9f3a1195e5c858452eae84a9170a1e",
+    "functions": 108,
+    "syntax": "passed"
+  },
+  {
+    "path": "news_spider.py",
+    "lines": 3222,
+    "sha256": "2d2de3dd71974b8644b1b9a6305ff43e75bb1554d1bcc69029f92735315691fe",
+    "functions": 104,
+    "syntax": "passed"
+  },
+  {
+    "path": "publication/build_humanities_docx.py",
+    "lines": 295,
+    "sha256": "6a0bd1f1051a3ae34f51f205fe952dbe5a771d578ef33f02745248c193e9bceb",
+    "functions": 7,
+    "syntax": "passed"
+  },
+  {
+    "path": "publication/build_model_docx.py",
+    "lines": 359,
+    "sha256": "f952ceafe6a2fb54ffe221d1b00a9ea7ec22e8dbe3fe4d4cd47d381859148971",
+    "functions": 11,
+    "syntax": "passed"
+  },
+  {
+    "path": "publication/evidence_docx_policy.py",
+    "lines": 28,
+    "sha256": "ee938630d1ef6535bc1491104929d06fd1264ab0c55d622b310d7dd5e55efeb0",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "query_design.py",
+    "lines": 18,
+    "sha256": "c360c9705cacbf85dfb82c2489556a3b954fde97ab9698782760b68792762537",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "rebuild_index.py",
+    "lines": 53,
+    "sha256": "fbf6cbb1388d8a367ff2fa3ab6cf436521414efc8ca7ac96ca0fb125a1cd7073",
+    "functions": 2,
+    "syntax": "passed"
+  },
+  {
+    "path": "reclean_outputs.py",
+    "lines": 87,
+    "sha256": "1f0ca7876d5e3cf4c80d1b348fe45b0e0af37f11fac3c6c41fad6fa44487679c",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "record_schema.py",
+    "lines": 93,
+    "sha256": "c98b4fef33ff719f2599b80f167130f5dd21a54a35e695c343ed491875ead10d",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/audit_evidence.py",
+    "lines": 41,
+    "sha256": "747c2498e3190785b87fca0fdfb8305a7fb0643b6e382fb1f42eede2a0994194",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/build_publication.sh",
+    "lines": 25,
+    "sha256": "5f7969d9759fcdac4295d0044e468789b4029484430702ac4f0a63105086dd88",
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/check_disk_space.py",
+    "lines": 26,
+    "sha256": "cefb9036f1a393b4e3a31efe590ae3e1b712f14da6617b6728fb019e3cee5b46",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/collect_tattoo_pilot.py",
+    "lines": 156,
+    "sha256": "1a24c529fffe5a23ea1688901f4ad8e81a086f0ce89ec4cd4d40858e603082b5",
+    "functions": 6,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/export_corpus_database.py",
+    "lines": 112,
+    "sha256": "ecf6be27e85af46d96b991ac3a1219deccc87b0c71ddf351f896ca40d3abb771",
+    "functions": 2,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/extract_seed_urls.py",
+    "lines": 41,
+    "sha256": "86f237b2910d1a590da125fc75f27512e246599247690f7e42903b8ae6a7d5b0",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/merge_source_bases.py",
+    "lines": 207,
+    "sha256": "b89621dd50fb8d0bdd784b6379d8a43d70d3468213d0e1f32214ba1b9b2adf04",
+    "functions": 8,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/run_corpus_pipeline.py",
+    "lines": 19,
+    "sha256": "52c0bffdca43682c94d7621a9a868ba9eef41b6443dcc1af32fc04cb13558ea1",
+    "functions": 1,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/run_cover_solver.py",
+    "lines": 103,
+    "sha256": "264fa47e62f3e61db1ad3015c491336c4735cee1da798706d404620e49a208ba",
+    "functions": 2,
+    "syntax": "passed"
+  },
+  {
+    "path": "scripts/run_query_plan.py",
+    "lines": 146,
+    "sha256": "898035323817b46d4f5fd9e7fc970c00977cfdc59ba0483015842d811eb303fe",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "source_adapters.py",
+    "lines": 63,
+    "sha256": "16048647b5b1cf8eb43877aa7ba2143df6fb48f78fa4fa2637cc40996f1da2e7",
+    "functions": 5,
+    "syntax": "passed"
+  },
+  {
+    "path": "source_profiles.py",
+    "lines": 806,
+    "sha256": "f4508110230d4f1a10061c1532a67ac528458902983fa7b3e1f09a14a22ecb38",
+    "functions": 12,
+    "syntax": "passed"
+  },
+  {
+    "path": "streamlit_app.py",
+    "lines": 6402,
+    "sha256": "1e2b7b3cf521dc5972bdd22a0d91d466731cdcc3d2b67934e99e622576d707ba",
+    "functions": 98,
+    "syntax": "passed"
+  },
+  {
+    "path": "structural_narrative.py",
+    "lines": 613,
+    "sha256": "8c4ad3e30b66bbe2e70d6b5539c661fefad1d74484a35f26d3cd1e41b3e69f9e",
+    "functions": 23,
+    "syntax": "passed"
+  },
+  {
+    "path": "tests/test_core_behaviors.py",
+    "lines": 270,
+    "sha256": "8c06df921906cb57dfbf9ac4e4f80eb0802872c8f93adca5e03782c065ae2c9a",
+    "functions": 16,
+    "syntax": "passed"
+  },
+  {
+    "path": "tests/test_evidence_model.py",
+    "lines": 183,
+    "sha256": "529725393259c010256342cdd2c342088622e00eedb8517393b31c4a031599de",
+    "functions": 28,
+    "syntax": "passed"
+  },
+  {
+    "path": "tests/test_pipeline_contract.py",
+    "lines": 152,
+    "sha256": "63a7b5b1605a79591c8486f48e42cd95cf7fe169a2680dc0b32a98186c2706e0",
+    "functions": 17,
+    "syntax": "passed"
+  },
+  {
+    "path": "tests/test_registry_pipeline.py",
+    "lines": 108,
+    "sha256": "3029da268a313566c8052490f9143fccd5452c880b8a0bf788680a7ed96e317d",
+    "functions": 18,
+    "syntax": "passed"
+  }
+]

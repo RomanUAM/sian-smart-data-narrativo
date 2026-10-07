@@ -1,0 +1,235 @@
+{
+  "coverage": {
+    "schema_version": 1,
+    "total": 2,
+    "analyses": {
+      "thematic": {
+        "eligible": 2,
+        "total": 2,
+        "coverage": 1.0,
+        "document_ids": [
+          "1fb5432d632f4c4b5d7aa2e4",
+          "1d1fb744641f2fcbd24ca9e1"
+        ],
+        "excluded_reasons": {},
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 1
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 1
+          }
+        },
+        "status": "available_descriptive"
+      },
+      "source_comparison": {
+        "eligible": 1,
+        "total": 2,
+        "coverage": 0.5,
+        "document_ids": [
+          "1fb5432d632f4c4b5d7aa2e4"
+        ],
+        "excluded_reasons": {
+          "fuente_no_identificada": 1
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 1
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "available_descriptive"
+      },
+      "temporal": {
+        "eligible": 1,
+        "total": 2,
+        "coverage": 0.5,
+        "document_ids": [
+          "1fb5432d632f4c4b5d7aa2e4"
+        ],
+        "excluded_reasons": {
+          "fecha_ausente_ambigua_o_precision_insuficiente": 1
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 1
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "available_descriptive"
+      },
+      "claims": {
+        "eligible": 1,
+        "total": 2,
+        "coverage": 0.5,
+        "document_ids": [
+          "1fb5432d632f4c4b5d7aa2e4"
+        ],
+        "excluded_reasons": {
+          "sin_afirmaciones_validadas_con_evidencia": 1
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 1
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "available_descriptive"
+      },
+      "actor_stance": {
+        "eligible": 1,
+        "total": 2,
+        "coverage": 0.5,
+        "document_ids": [
+          "1fb5432d632f4c4b5d7aa2e4"
+        ],
+        "excluded_reasons": {
+          "sin_afirmaciones_validadas_con_evidencia": 1
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 1
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "available_descriptive"
+      },
+      "narrative": {
+        "eligible": 0,
+        "total": 2,
+        "coverage": 0.0,
+        "document_ids": [],
+        "excluded_reasons": {
+          "sin_evidencia_revisada": 2
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 0
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "unavailable"
+      },
+      "reception": {
+        "eligible": 0,
+        "total": 2,
+        "coverage": 0.0,
+        "document_ids": [],
+        "excluded_reasons": {
+          "sin_evidencia_revisada": 2
+        },
+        "by_source_type": {
+          "news": {
+            "total": 1,
+            "eligible": 0
+          },
+          "forum": {
+            "total": 1,
+            "eligible": 0
+          }
+        },
+        "status": "unavailable"
+      }
+    },
+    "fields": {
+      "author": {
+        "not_found": 1,
+        "not_evaluable": 1
+      },
+      "publication_date": {
+        "explicit": 1,
+        "not_evaluable": 1
+      },
+      "update_date": {
+        "not_evaluable": 2
+      },
+      "consultation_date": {
+        "not_evaluable": 2
+      },
+      "publication_source": {
+        "explicit": 1,
+        "inferred": 1
+      },
+      "text": {
+        "explicit": 2
+      }
+    },
+    "by_source_type": {}
+  },
+  "document_concept_matrix": [
+    {
+      "document_id": "1fb5432d632f4c4b5d7aa2e4",
+      "concept": "empleo",
+      "value": 1
+    }
+  ],
+  "source_concept_summary": [
+    {
+      "source": "Fuente demostrativa",
+      "concept": "empleo",
+      "documents_with_concept": 1,
+      "documents_reviewed_for_concept": 1,
+      "proportion": 1.0
+    }
+  ],
+  "temporal_model_coverage": {
+    "eligible": 1,
+    "total": 2,
+    "document_ids": [
+      "1fb5432d632f4c4b5d7aa2e4"
+    ]
+  },
+  "actor_concept_stance": [
+    {
+      "actor": "Ana",
+      "concept": "empleo",
+      "stance": "support",
+      "claims": 1
+    }
+  ],
+  "temporal_reviewed_concepts": [
+    {
+      "period": "2020",
+      "concept": "empleo",
+      "documents": 1
+    }
+  ],
+  "asserted_relations": [
+    {
+      "source": "formación",
+      "target": "empleo",
+      "type": "consecuencia_atribuida",
+      "document_id": "1fb5432d632f4c4b5d7aa2e4",
+      "quote": "Ana sostiene que la formación mejora el empleo.",
+      "interpretation": "relation_asserted_in_text"
+    }
+  ],
+  "limitations": [
+    "Descriptive corpus results, not population opinion or causal effects.",
+    "Unreviewed concepts are null, never zero.",
+    "Multiple documents/claims may depend on the same institution or event.",
+    "Temporal concept counts cover reviewed AND explicitly dated documents only."
+  ]
+}

@@ -30,10 +30,22 @@ from narrative_analysis import (  # noqa: E402
     rows_to_csv,
 )
 from source_profiles import source_access_policy  # noqa: E402
+from query_design import period_terms  # noqa: E402
 from structural_narrative import technical_traceability_rows  # noqa: E402
 
 
 class CoreBehaviorTests(unittest.TestCase):
+    def test_temporal_query_plan_keeps_anchors_and_repeats_seeded_draw(self) -> None:
+        core = ["tatuaje", "tattoo"]
+        pool = ["memoria", "empleo", "salud", "diseño", "ritual"]
+        first = period_terms(core, pool, 4, 2026, 24314)
+        self.assertEqual(first, period_terms(core, pool, 4, 2026, 24314))
+        self.assertEqual(first[:2], [("tatuaje", "anchor"), ("tattoo", "anchor")])
+        self.assertEqual(len(first), 4)
+        self.assertEqual({role for _, role in first[2:]}, {"exploratory"})
+        other = period_terms(core, pool, 4, 2026, 24315)
+        self.assertEqual(other[:2], first[:2])
+
     def test_exact_hypervolume_3d_single_point(self) -> None:
         self.assertAlmostEqual(exact_hypervolume_3d_max([(0.8, 0.5, 0.6)]), 0.24)
 
@@ -143,6 +155,26 @@ class CoreBehaviorTests(unittest.TestCase):
             country="",
         )
         self.assertTrue(ok)
+
+    def test_subject_geography_is_distinct_from_publisher_geography(self) -> None:
+        global_ok, _ = passes_geographic_filter(
+            "Global / sin límite regional", [], "https://example.org/x", "Journal", "Tattoos", ""
+        )
+        mexican_outlet, _ = passes_geographic_filter(
+            "México", ["México"], "https://www.jornada.com.mx/cultura/tatuaje",
+            "La Jornada", "Tatuadores de Berlín", "Una exposición alemana", country="MX",
+        )
+        foreign_outlet, _ = passes_geographic_filter(
+            "México", ["México"], "https://example.org/tattoos",
+            "Foreign Journal", "Tattooing in México", "Estudio de prácticas culturales", country="US",
+        )
+        missing_terms, _ = passes_geographic_filter(
+            "México", [], "https://example.org/tattoos", "Journal", "Tattoos", "", country="MX",
+        )
+        self.assertFalse(mexican_outlet)
+        self.assertTrue(global_ok)
+        self.assertTrue(foreign_outlet)
+        self.assertFalse(missing_terms)
 
     def test_tattoo_domain_uses_tattoo_frames_not_ai_software_frames(self) -> None:
         rows = [

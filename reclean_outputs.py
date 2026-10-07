@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from corpus_storage import atomic_write
 
 import argparse
 import json
 from pathlib import Path
 
+from evidence_model import normalize_record
+from corpus_contract import is_record
 from news_spider import classify_source_type, clean_article_text, evidence_rank_for_source_type
 
 
@@ -12,7 +15,7 @@ def reclean_record(record: dict) -> dict:
     source_text = record.get("text_raw_visible") or record.get("text_clean") or ""
     cleaned = clean_article_text(source_text, title=record.get("title", ""), source_url=record.get("url", ""))
     source_type, source_type_confidence, source_type_evidence = classify_source_type(
-        article={},
+        article={"source_type_override": record.get("source_type"), "source_type_evidence_override": record.get("source_type_evidence")},
         url=record.get("url", ""),
         medium=record.get("medium", ""),
         title=record.get("title", ""),
@@ -36,7 +39,10 @@ def reclean_record(record: dict) -> dict:
     updated["cleaning_notes"] = cleaned["cleaning_notes"]
     if updated.get("status") == "ok" and updated["text_length"] == 0:
         updated["status"] = "too_short"
-    return updated
+    info = dict(updated.get("record_information") or {})
+    info.pop("text", None)
+    updated["record_information"] = info
+    return normalize_record(updated)
 
 
 def load_records(input_path: Path) -> list[dict]:
@@ -54,10 +60,7 @@ def load_records(input_path: Path) -> list[dict]:
 
 def save_records(records: list[dict], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "news_records_recleaned.json").write_text(
-        json.dumps(records, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    atomic_write(output_dir / 'news_records_recleaned.json', json.dumps(records, ensure_ascii=False, indent=2), encoding='utf-8')
     with (output_dir / "news_records_recleaned.jsonl").open("w", encoding="utf-8") as fh:
         for record in records:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -74,7 +77,7 @@ def main() -> None:
     args = parse_args()
     input_path = Path(args.input_path)
     output_dir = Path(args.output_dir)
-    records = [reclean_record(record) for record in load_records(input_path)]
+    records = [reclean_record(record) for record in load_records(input_path) if is_record(record)]
     save_records(records, output_dir)
     ok = sum(1 for record in records if record.get("status") == "ok")
     print(f"Saved {len(records)} re-cleaned records ({ok} ok) in {output_dir}")

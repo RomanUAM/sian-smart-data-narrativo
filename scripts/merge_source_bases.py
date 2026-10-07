@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from corpus_storage import atomic_write
 
 import argparse
 import hashlib
@@ -7,6 +8,11 @@ import json
 import re
 import urllib.parse
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from news_spider import canonical_url_key as safe_url_key
+from evidence_model import normalize_record
+from corpus_contract import identity_key, merge_record, is_record
 
 
 SOURCE_KEYS = ["news", "forums", "institutional", "articles", "reports_other"]
@@ -30,28 +36,12 @@ def normalize_key_text(value: str) -> str:
 
 
 def canonical_url_key(url: str) -> str:
-    url = (url or "").strip()
-    if not url:
-        return ""
-    parsed = urllib.parse.urlparse(url)
-    if not parsed.netloc:
-        return normalize_key_text(url)
-    domain = parsed.netloc.lower().removeprefix("www.")
-    path = re.sub(r"/+$", "", parsed.path or "")
-    return f"url:{domain}{path}"
+    key = safe_url_key(url)
+    return "url:" + key if key else ""
 
 
 def row_dedup_key(row: dict) -> str:
-    url_key = canonical_url_key(str(row.get("url") or row.get("pdf_url") or ""))
-    if url_key:
-        return url_key
-    title = normalize_key_text(str(row.get("title") or ""))
-    year = str(row.get("year") or "")
-    medium = normalize_key_text(str(row.get("medium") or ""))
-    if title:
-        return f"title:{year}:{medium}:{title}"
-    payload = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)
-    return "hash:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return identity_key(row)
 
 
 def read_records(path: Path) -> list[dict]:
@@ -112,7 +102,7 @@ def source_record_files(source_dir: Path) -> list[Path]:
     # Prefer JSONL when both JSON and JSONL siblings exist. JSONL is streamed
     # line-by-line and is safer on long local crawls where large JSON arrays can
     # trigger OS timeouts while Streamlit is also running.
-    jsonl_siblings = {path.with_suffix(".jsonl") for path in files if path.suffix == ".json"}
+    jsonl_siblings = {path for path in files if path.suffix == ".jsonl"}
     filtered = []
     for path in files:
         if path.suffix == ".json" and path.with_suffix(".jsonl") in jsonl_siblings:
@@ -129,6 +119,7 @@ def merge_sources(base_output_dir: Path, source_keys: list[str]) -> tuple[list[d
         "total_rows_seen": 0,
         "total_rows_merged": 0,
         "duplicates": 0,
+        "rejected_non_records": 0,
     }
     for source_key in source_keys:
         source_dir = base_output_dir / "by_source" / source_key
@@ -153,6 +144,10 @@ def merge_sources(base_output_dir: Path, source_keys: list[str]) -> tuple[list[d
             source_report["rows_seen"] += len(rows)
             report["total_rows_seen"] += len(rows)
             for row in rows:
+                if not is_record(row):
+                    report["rejected_non_records"] += 1
+                    continue
+                row = normalize_record(row)
                 key = row_dedup_key(row)
                 if not key:
                     continue
@@ -173,8 +168,10 @@ def merge_sources(base_output_dir: Path, source_keys: list[str]) -> tuple[list[d
                         for item in str(prior.get("source_collection") or "").split(",")
                         if item.strip()
                     }
+                    row["source_collection"] = source_key
+                    merged[key] = merge_record(prior, row)
                     collections.add(source_key)
-                    prior["source_collection"] = ", ".join(sorted(collections))
+                    merged[key]["source_collection"] = ", ".join(sorted(collections))
         report["sources"][source_key] = source_report
     merged_rows = sorted(
         merged.values(),
@@ -193,27 +190,15 @@ def main() -> int:
     source_keys = [item.strip() for item in args.sources.split(",") if item.strip()]
     rows, report = merge_sources(base_output_dir, source_keys)
     base_output_dir.mkdir(parents=True, exist_ok=True)
-    if not rows and report["total_rows_seen"] == 0:
+    if not rows:
         report["write_status"] = "skipped_empty_merge_to_preserve_existing_output"
-        (base_output_dir / "merge_report.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write(base_output_dir / 'merge_report.json', json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
         print(json.dumps(report, ensure_ascii=False, indent=2))
         return 2
     report["write_status"] = "written"
-    (base_output_dir / "news_records_merged.json").write_text(
-        json.dumps(rows, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    (base_output_dir / "news_records_merged.jsonl").write_text(
-        "\n".join(json.dumps(row, ensure_ascii=False) for row in rows) + ("\n" if rows else ""),
-        encoding="utf-8",
-    )
-    (base_output_dir / "merge_report.json").write_text(
-        json.dumps(report, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    atomic_write(base_output_dir / 'news_records_merged.json', json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+    atomic_write(base_output_dir / 'news_records_merged.jsonl', '\n'.join((json.dumps(row, ensure_ascii=False) for row in rows)) + ('\n' if rows else ''), encoding='utf-8')
+    atomic_write(base_output_dir / 'merge_report.json', json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return 0
 

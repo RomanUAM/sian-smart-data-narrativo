@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from evidence_docx_policy import append_evidence_policy
 
 from docx import Document
 from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
@@ -349,6 +350,7 @@ def main() -> None:
         "de descarga, proporción ok/ok_partial y una auditoría manual de calidad textual y actores.",
     )
 
+    append_evidence_policy(doc)
     doc.save(OUT)
     print(OUT)
 

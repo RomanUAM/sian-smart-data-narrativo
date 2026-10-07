@@ -1,0 +1,26 @@
+[
+  {
+    "document_id": "1fb5432d632f4c4b5d7aa2e4",
+    "claims": [
+      {
+        "concept": "empleo",
+        "statement": "La formación mejora el empleo",
+        "speaker": "Ana",
+        "speaker_evidence": "Ana",
+        "stance": "support",
+        "quote": "Ana sostiene que la formación mejora el empleo.",
+        "review_status": "validated",
+        "relations": [
+          {
+            "source": "formación",
+            "target": "empleo",
+            "type": "consecuencia_atribuida"
+          }
+        ]
+      }
+    ],
+    "reviewed_concepts": [
+      "empleo"
+    ]
+  }
+]

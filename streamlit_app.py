@@ -1,4 +1,6 @@
 from __future__ import annotations
+from corpus_storage import atomic_write
+from corpus_contract import identity_key, merge_record, merge_rows as contract_merge_rows
 
 from collections import Counter, defaultdict
 from itertools import combinations
@@ -18,6 +20,9 @@ import html as html_lib
 
 import streamlit as st
 import streamlit.components.v1 as components
+
+from evidence_model import (normalize_record, coverage_report, descriptive_models, metadata_audit_rows,
+                            apply_reviews, ANALYSIS_LABELS)
 
 from narrative_analysis import (
     actor_counts,
@@ -62,6 +67,8 @@ from news_spider import (
     document_dedup_key_from_values,
     evidence_rank_for_source_type,
 )
+from query_design import period_terms
+
 from source_profiles import (
     domains_from_seed_file as catalog_domains_from_seed_file,
     profile_domains,
@@ -97,13 +104,7 @@ def stable_json_hash(value) -> str:
 
 
 def row_document_dedup_key(row: dict) -> str:
-    return document_dedup_key_from_values(
-        url=str(row.get("url") or ""),
-        title=str(row.get("title") or ""),
-        year=row.get("year") or "",
-        medium=str(row.get("medium") or ""),
-        pdf_url=str(row.get("pdf_url") or ""),
-    ) or str(row.get("url") or row.get("title") or stable_json_hash(row))
+    return identity_key(row)
 
 
 def deduplicate_rows_for_analysis(rows: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -120,16 +121,7 @@ def deduplicate_rows_for_analysis(rows: list[dict]) -> tuple[list[dict], list[di
         duplicate["dedup_key"] = key
         duplicate["duplicate_of"] = kept[key].get("url") or kept[key].get("title") or key
         duplicates.append(duplicate)
-        prior = kept[key]
-        prior["variant_rubric"] = ", ".join(
-            merge_unique([str(prior.get("variant_rubric") or ""), str(row.get("variant_rubric") or "")])
-        )
-        prior["variant_term"] = ", ".join(
-            merge_unique([str(prior.get("variant_term") or ""), str(row.get("variant_term") or "")])
-        )
-        prior["source_collection"] = ", ".join(
-            merge_unique([str(prior.get("source_collection") or ""), str(row.get("source_collection") or "")])
-        )
+        kept[key] = merge_record(kept[key], row)
     return list(kept.values()), duplicates
 
 
@@ -156,15 +148,9 @@ def save_run_manifest(config: dict) -> None:
             "Las salidas heurísticas requieren validación humana.",
         ],
     }
-    (output_dir / "run_manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default),
-        encoding="utf-8",
-    )
+    atomic_write(output_dir / 'run_manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
     if query_plan:
-        (output_dir / "query_plan.json").write_text(
-            json.dumps(query_plan, ensure_ascii=False, indent=2, default=json_default),
-            encoding="utf-8",
-        )
+        atomic_write(output_dir / 'query_plan.json', json.dumps(query_plan, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
 
 
 def update_run_manifest(config: dict, status: str, rows: list[dict] | None = None, error: str = "") -> None:
@@ -192,7 +178,7 @@ def update_run_manifest(config: dict, status: str, rows: list[dict] | None = Non
         }
     )
     output_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding="utf-8")
+    atomic_write(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
 
 
 def is_safe_clear_target(path_value: str) -> tuple[bool, Path, str]:
@@ -319,11 +305,12 @@ def start_worker(config: dict) -> None:
                         stop_requested=stop_event.is_set,
                     )
                     for record in records:
-                        row = asdict(record)
+                        row = normalize_record(asdict(record))
                         row["variant_rubric"] = step_config.get("variant_rubric", "")
                         row["variant_term"] = step_config.get("variant_term", "")
                         row["variant_term_index"] = step_config.get("variant_term_index", "")
                         row["source_collection"] = step_config.get("source_collection", "")
+                        row["search_role"] = step_config.get("search_role", "")
                         narrative_rubrics, narrative_terms = classify_row_with_rubrics(
                             row,
                             step_config.get("classification_rubrics") or config.get("classification_rubrics") or {},
@@ -340,66 +327,11 @@ def start_worker(config: dict) -> None:
                         f"{step_config.get('source_collection', 'mixed')} · "
                         f"{step_config.get('period_label', step_config.get('start_year'))} · {len(records)} records"
                     )
-                merged: dict[str, dict] = {}
-                for row in all_rows:
-                    key = row_document_dedup_key(row)
-                    if not key:
-                        continue
-                    if key not in merged:
-                        merged[key] = row
-                    else:
-                        prior = merged[key]
-                        rubrics = merge_unique(
-                            [
-                                str(prior.get("variant_rubric") or ""),
-                                str(row.get("variant_rubric") or ""),
-                            ]
-                        )
-                        terms = merge_unique(
-                            [
-                                str(prior.get("variant_term") or ""),
-                                str(row.get("variant_term") or ""),
-                            ]
-                        )
-                        collections = merge_unique(
-                            [
-                                str(prior.get("source_collection") or ""),
-                                str(row.get("source_collection") or ""),
-                            ]
-                        )
-                        prior["variant_rubric"] = ", ".join(rubrics)
-                        prior["variant_term"] = ", ".join(terms)
-                        prior["source_collection"] = ", ".join(collections)
-                        prior["narrative_rubrics"] = ", ".join(
-                            merge_unique(
-                                [
-                                    str(prior.get("narrative_rubrics") or ""),
-                                    str(row.get("narrative_rubrics") or ""),
-                                ]
-                            )
-                        )
-                        prior["narrative_rubric_terms"] = ", ".join(
-                            merge_unique(
-                                [
-                                    str(prior.get("narrative_rubric_terms") or ""),
-                                    str(row.get("narrative_rubric_terms") or ""),
-                                ]
-                            )
-                        )
                 output_dir = Path(config["output_dir"])
                 output_dir.mkdir(parents=True, exist_ok=True)
-                merged_rows = sorted(
-                    merged.values(),
-                    key=lambda item: (item.get("year") or 0, item.get("source_type") or "", item.get("medium") or ""),
-                )
-                (output_dir / "news_records_sequential_merged.json").write_text(
-                    json.dumps(merged_rows, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-                (output_dir / "news_records_sequential_merged.jsonl").write_text(
-                    "\n".join(json.dumps(row, ensure_ascii=False) for row in merged_rows) + ("\n" if merged_rows else ""),
-                    encoding="utf-8",
-                )
+                merged_rows = contract_merge_rows(all_rows)
+                atomic_write(output_dir / 'news_records_sequential_merged.json', json.dumps(merged_rows, ensure_ascii=False, indent=2), encoding='utf-8')
+                atomic_write(output_dir / 'news_records_sequential_merged.jsonl', '\n'.join((json.dumps(row, ensure_ascii=False) for row in merged_rows)) + ('\n' if merged_rows else ''), encoding='utf-8')
                 update_run_manifest(config, "finished", merged_rows)
                 q.put(("done", merged_rows))
             else:
@@ -431,7 +363,7 @@ def start_worker(config: dict) -> None:
                 )
                 rows = []
                 for record in records:
-                    row = asdict(record)
+                    row = normalize_record(asdict(record))
                     narrative_rubrics, narrative_terms = classify_row_with_rubrics(
                         row,
                         config.get("classification_rubrics") or {},
@@ -687,77 +619,17 @@ def source_strategy_rows_from_seed_file(seed_file: str, query: str, variants: li
 
 
 def merge_source_bases(base_output_dir: str, source_keys: list[str]) -> list[dict]:
-    merged: dict[str, dict] = {}
-    merge_report = {
-        "base_output_dir": str(base_output_dir),
-        "sources": {},
-        "total_rows_seen": 0,
-        "total_rows_merged": 0,
-        "duplicates": 0,
-    }
-    for source_key in source_keys:
-        source_dir = source_output_dir(base_output_dir, source_key)
-        rows: list[dict] = []
-        source_report = {
-            "source_dir": source_dir,
-            "files_found": 0,
-            "files_with_rows": 0,
-            "rows_seen": 0,
-            "read_failures_or_empty": 0,
-            "unavailable_reasons": {},
-        }
-        for record_file in source_record_files(source_dir):
-            source_report["files_found"] += 1
-            try:
-                loaded = load_records_from_path(str(record_file))
-            except Exception:
-                source_report["read_failures_or_empty"] += 1
-                continue
-            if not loaded:
-                source_report["read_failures_or_empty"] += 1
-                reason = record_file_unavailable_reason(record_file)
-                source_report["unavailable_reasons"][reason] = source_report["unavailable_reasons"].get(reason, 0) + 1
-                continue
-            source_report["files_with_rows"] += 1
-            source_report["rows_seen"] += len(loaded)
-            merge_report["total_rows_seen"] += len(loaded)
-            rows.extend(loaded)
-        for row in rows:
-            key = row_document_dedup_key(row)
-            if not key:
-                continue
-            if key not in merged:
-                copy = dict(row)
-                copy["source_collection"] = ", ".join(
-                    merge_unique([str(copy.get("source_collection") or ""), source_key])
-                )
-                merged[key] = copy
-            else:
-                merge_report["duplicates"] += 1
-                prior = merged[key]
-                prior["source_collection"] = ", ".join(
-                    merge_unique([str(prior.get("source_collection") or ""), source_key])
-                )
-        merge_report["sources"][source_key] = source_report
+    from scripts.merge_source_bases import merge_sources
     output_dir = Path(base_output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    merged_rows = sorted(merged.values(), key=lambda item: (str(item.get("year") or ""), str(item.get("source_type") or ""), str(item.get("medium") or "")))
-    merge_report["total_rows_merged"] = len(merged_rows)
-    if not merged_rows and merge_report["total_rows_seen"] == 0:
-        existing = output_dir / "news_records_merged.json"
-        merge_report["write_status"] = "skipped_empty_merge_to_preserve_existing_output"
-        (output_dir / "merge_report.json").write_text(json.dumps(merge_report, ensure_ascii=False, indent=2), encoding="utf-8")
-        if existing.exists() and existing.stat().st_size > 2:
-            return load_records_from_path(existing)
-        return []
-    merge_report["write_status"] = "written"
-    (output_dir / "news_records_merged.json").write_text(json.dumps(merged_rows, ensure_ascii=False, indent=2), encoding="utf-8")
-    (output_dir / "news_records_merged.jsonl").write_text(
-        "\n".join(json.dumps(row, ensure_ascii=False) for row in merged_rows) + ("\n" if merged_rows else ""),
-        encoding="utf-8",
-    )
-    (output_dir / "merge_report.json").write_text(json.dumps(merge_report, ensure_ascii=False, indent=2), encoding="utf-8")
-    return merged_rows
+    rows, report = merge_sources(output_dir, source_keys)
+    report["write_status"] = "written" if rows else "skipped_empty_merge_to_preserve_existing_output"
+    atomic_write(output_dir / 'merge_report.json', json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    if rows:
+        atomic_write(output_dir / 'news_records_merged.json', json.dumps(rows, ensure_ascii=False, indent=2), encoding='utf-8')
+        atomic_write(output_dir / 'news_records_merged.jsonl', ''.join((json.dumps(row, ensure_ascii=False) + '\n' for row in rows)), encoding='utf-8')
+        return rows
+    return load_records_from_path(output_dir / "news_records_merged.json")
 
 
 def actor_validation_path(analysis_path: str) -> Path:
@@ -778,7 +650,7 @@ def load_actor_validations(path: Path) -> dict:
 
 def save_actor_validations(path: Path, validations: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(validations, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write(path, json.dumps(validations, ensure_ascii=False, indent=2), encoding='utf-8')
 
 
 def apply_actor_validations(event_rows: list[dict], validations: dict) -> list[dict]:
@@ -1058,7 +930,7 @@ POSITIVE_SENTIMENT_TERMS = {
     "respeto", "seguro", "solidaridad", "valor", "valioso",
     "acceptance", "accepted", "admiration", "autonomy", "beautiful", "beauty", "benefit",
     "care", "celebration", "confidence", "creative", "creativity", "desirable", "empowerment",
-    "expression", "favorable", "freedom", "happy", "improvement", "inclusion", "positive",
+    "expression", "freedom", "happy", "improvement", "positive",
     "pride", "recognition", "respect", "safe", "solidarity", "trust", "valuable", "wellbeing",
 }
 
@@ -1070,8 +942,7 @@ NEGATIVE_SENTIMENT_TERMS = {
     "miedo", "negativo", "peligro", "prejuicio", "problema", "rechazo", "riesgo",
     "sancion", "sanción", "violencia", "vulnerabilidad",
     "abuse", "alarm", "allergy", "attack", "concern", "conflict", "controversy", "crime",
-    "criticism", "damage", "danger", "disease", "discrimination", "error", "exclusion",
-    "failure", "fear", "harm", "illegal", "infection", "negative", "pain", "prejudice",
+    "criticism", "damage", "danger", "disease", "discrimination", "failure", "fear", "harm", "illegal", "infection", "negative", "pain", "prejudice",
     "problem", "rejection", "regret", "risk", "stigma", "threat", "violence", "vulnerability",
 }
 
@@ -1630,6 +1501,74 @@ def render_results(rows: list[dict]) -> None:
     st.download_button("Descargar JSONL", data=jsonl_bytes, file_name="news_records.jsonl", mime="application/x-ndjson")
 
 
+def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
+    rows = [normalize_record(row) for row in rows]
+    with st.expander("Evidencia disponible y requisitos de análisis", expanded=True):
+        from collections import Counter
+        st.dataframe([{"estado_selección":k,"registros":v} for k,v in Counter(r['selection']['state'] for r in rows).items()], use_container_width=True)
+        st.dataframe([{"contenido":k,"registros":v} for k,v in Counter(r['content_kind'] for r in rows).items()], use_container_width=True)
+        from record_schema import STAGES
+        st.dataframe([{"etapa": stage, "estado": state, "registros": count} for stage in STAGES for state, count in Counter(r['stage_states'].get(stage,'unknown') for r in rows).items()], use_container_width=True)
+        pipeline_dir = st.text_input("Directorio para corpus preparado y puntos de reanudación", value="pipeline_output", key="pipeline_output_directory")
+        if st.button("Preparar corpus con etapas y registro", key="prepare_pipeline"):
+            from corpus_pipeline import process_corpus
+            try:
+                rows, pipeline_report = process_corpus(rows, pipeline_dir)
+                st.success(f"Corpus preparado: {pipeline_report['records']} registros; {pipeline_report['quarantined']} en cuarentena.")
+            except (ValueError, OSError) as exc:
+                st.error(f"Preparación incompleta: {exc}")
+        st.caption("Los títulos permiten descubrimiento bibliográfico; no sustituyen texto suficiente. Los conteos de registros no miden cobertura de búsqueda.")
+        selection_review = st.file_uploader("Revisión de inclusión/exclusión por documento y versión (JSON)", type=["json"], key="selection_reviews")
+        if selection_review is not None:
+            from corpus_pipeline import apply_selection_reviews
+            try:
+                rows = apply_selection_reviews(rows, json.loads(selection_review.getvalue()))
+            except (ValueError, KeyError, TypeError) as exc:
+                st.error(f"Selección no aplicada: {exc}")
+        st.caption("Autor, fecha y postura pueden faltar. Cada análisis utiliza su subconjunto; un dato faltante nunca equivale a cero.")
+        precision = st.selectbox("Precisión temporal requerida", ["year", "month", "day"],
+                                 format_func=lambda x: {"year": "Año", "month": "Mes", "day": "Día"}[x])
+        reviews = st.file_uploader("Importar revisión con fragmentos de respaldo (JSON)", type=["json"], key="evidence_reviews")
+        if reviews is not None:
+            try:
+                rows = apply_reviews(rows, json.loads(reviews.getvalue()))
+                st.success("Revisión aplicada. Descarga el corpus actualizado para conservarla.")
+            except (ValueError, TypeError, KeyError) as exc:
+                st.error(f"No se aplicó la revisión: {exc}")
+        report = coverage_report(rows, precision)
+        st.dataframe([{"análisis": ANALYSIS_LABELS[k], "utilizables": v["eligible"],
+                       "total": v["total"], "cobertura": v["coverage"],
+                       "exclusiones": json.dumps(v["excluded_reasons"], ensure_ascii=False)}
+                      for k, v in report["analyses"].items()], use_container_width=True)
+        st.dataframe([{k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v) if v is not None else None) for k, v in item.items()} for item in metadata_audit_rows(rows)], use_container_width=True)
+        st.caption("La cobertura indica disponibilidad de evidencia; no representatividad ni suficiencia estadística. El dominio de una URL no identifica por sí solo al autor o editor.")
+        for key in ("temporal", "actor_stance"):
+            st.write(ANALYSIS_LABELS[key])
+            st.dataframe([{"tipo": t, **v} for t, v in report["analyses"][key]["by_source_type"].items()], use_container_width=True)
+        models = descriptive_models(rows, precision)
+        for key, label in [("document_concept_matrix", "Conceptos revisados por documento"),
+                           ("actor_concept_stance", "Posiciones de actores revisadas"),
+                           ("source_concept_summary", "Presencia de conceptos por fuente y denominador revisado"),
+                           ("asserted_relations", "Relaciones afirmadas en el texto"),
+                           ("temporal_reviewed_concepts", "Conceptos revisados por periodo")]:
+            st.write(label)
+            if models[key]:
+                st.dataframe(models[key], use_container_width=True)
+            else:
+                st.info("No hay evidencia revisada suficiente para este resultado.")
+        st.download_button("Descargar cobertura JSON", json.dumps(report, ensure_ascii=False, indent=2),
+                           "information_coverage.json", "application/json")
+        st.download_button("Descargar modelos descriptivos JSON", json.dumps(models, ensure_ascii=False, indent=2),
+                           "descriptive_models.json", "application/json")
+        st.download_button("Descargar corpus con evidencia y revisiones", json.dumps(rows, ensure_ascii=False, indent=2),
+                           "news_records_reviewed.json", "application/json")
+        template = [{"document_id": r["document_id"], "version_id": r["version_id"], "claims": [], "reviewed_concepts": []} for r in rows]
+        st.download_button("Descargar plantilla de selección", json.dumps([{ "document_id": r["document_id"], "version_id": r["version_id"], "state": "pending", "reason": "", "evidence": "", "reviewer": "", "reviewed_at": None} for r in rows], ensure_ascii=False, indent=2), "selection_review_template.json", "application/json")
+        st.download_button("Descargar plantilla de revisión", json.dumps(template, ensure_ascii=False, indent=2),
+                           "review_template.json", "application/json")
+    return rows
+
+
 def render_analysis_tab(default_output_dir: str) -> None:
     st.subheader("Análisis local de narrativas")
     st.caption("Todo se calcula en tu computadora con los JSON guardados. No se envían textos a modelos externos.")
@@ -1776,6 +1715,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
+    rows = render_evidence_dashboard(rows)
     raw_rows = rows
     rows, duplicate_rows = deduplicate_rows_for_analysis(raw_rows)
     if duplicate_rows:
@@ -1813,8 +1753,8 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
     st.dataframe([balance], use_container_width=True)
     if balance["status"] == "not_valid_for_social_narrative":
         st.error(
-            "Este corpus NO sirve para análisis social de narrativa. "
-            "Está dominado por artículos científicos y faltan capas de noticias/foros."
+            "La cobertura limita las conclusiones a las fuentes disponibles. "
+            "Faltan voces de noticias/foros; los documentos existentes siguen siendo utilizables para las preguntas que puedan responder."
         )
     render_source_status_dashboard(rows, config=st.session_state.get("spider_config", {}))
 
@@ -1850,7 +1790,8 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
     with st.expander("Filtros del análisis", expanded=True):
         c1, c2, c3 = st.columns(3)
         selected_types = c1.multiselect("Tipo de fuente", source_type_options, default=source_type_options)
-        selected_years = c2.multiselect("Años", year_options, default=year_options)
+        selected_years = c2.multiselect("Años de publicación comprobables", year_options, default=year_options)
+        include_undated = c2.checkbox("Conservar documentos sin fecha para análisis no temporales", value=True)
         selected_media = c3.multiselect("Medios", medium_options, default=medium_options)
         c4, c5 = st.columns(2)
         selected_languages = c4.multiselect("Idioma", language_options, default=language_options)
@@ -1907,10 +1848,11 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             help="0 deja ver todo el corpus usable. Sube a 3–5 cuando quieras depurar ruido después de observar redes y n-gramas.",
         )
 
+    date_filtered_usable = [r for r in usable if (r.get("year") in selected_years) or (include_undated and r.get("year") is None)]
     selected_records = filter_records(
-        usable,
+        date_filtered_usable,
         source_types=selected_types,
-        years=selected_years,
+        years=None,
         media=selected_media,
         languages=selected_languages,
         localizations=selected_localizations,
@@ -1927,10 +1869,11 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
     )
     manually_removed_records = [*manually_removed_records, *low_relevance_records]
 
+    st.info("Los módulos heurísticos siguientes generan candidatos y asociaciones léxicas. Las posiciones y relaciones revisadas se muestran en el panel de evidencia; ninguna red prueba influencia o causalidad.")
     m1, m2, m3, m4, m5 = st.columns(5)
     m1.metric("Documentos analizados", len(selected_records))
     m2.metric("Tipos de fuente", len({row_source_type(row) for row in selected_records}))
-    m3.metric("Años", len({row.get("year") for row in selected_records}))
+    m3.metric("Años comprobables", len({row.get("year") for row in selected_records if row.get("year")}))
     m4.metric("Medios", len({row.get("medium") for row in selected_records}))
     m5.metric("México foco/mención", sum(1 for row in selected_records if row.get("localization") in {"Mexico-focused", "Mexico-mentioned"}))
 
@@ -3801,7 +3744,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             save_dir = save_base if save_base.suffix == "" else save_base.parent
             save_dir.mkdir(parents=True, exist_ok=True)
             save_path = save_dir / "narrative_analysis_unified.json"
-            save_path.write_text(json.dumps(unified_analysis, ensure_ascii=False, indent=2), encoding="utf-8")
+            atomic_write(save_path, json.dumps(unified_analysis, ensure_ascii=False, indent=2), encoding='utf-8')
             st.success(f"Guardado: {save_path}")
         st.download_button("Descargar monogramas CSV", rows_to_csv(terms), "narrative_monograms.csv", "text/csv")
         st.download_button("Descargar bigramas CSV", rows_to_csv(bigrams), "narrative_bigrams.csv", "text/csv")
@@ -5613,9 +5556,9 @@ with st.sidebar:
         disabled=st.session_state.spider_running,
     )
     sequential_randomize = st.checkbox(
-        "Aleatorizar orden de términos de forma reproducible",
+        "Rotar etiquetas exploratorias con semilla",
         value=True,
-        help="Evita sesgar la recuperación hacia el primer rubro. La semilla hace que el orden pueda repetirse.",
+        help="La consulta principal permanece en todos los meses; sólo las etiquetas exploratorias se sortean. Compara periodos con la ruta principal.",
         disabled=st.session_state.spider_running,
     )
     sequential_seed = st.number_input(
@@ -6182,6 +6125,9 @@ if selected_source_run or run or run_sequential:
     if not query.strip():
         st.error("Necesitas escribir una consulta.")
         st.stop()
+    if not str(geographic_choice).strip().lower().startswith("global") and not geographic_terms:
+        st.error("Define términos del lugar estudiado para aplicar la delimitación geográfica.")
+        st.stop()
     if start_year > end_year:
         st.error("El año inicial no puede ser mayor que el año final.")
         st.stop()
@@ -6207,30 +6153,35 @@ if selected_source_run or run or run_sequential:
             terms = merge_unique([query, *rubric_terms])[: int(sequential_synonym_limit)]
             for term_index, term in enumerate(terms, start=1):
                 article_term_steps.append((rubric_name, term_index, term, terms))
-        rng = random.Random(int(sequential_seed)) if sequential_randomize else None
-        if rng:
-            rng.shuffle(broad_term_steps)
-            rng.shuffle(article_term_steps)
         monthly_term_budget = max(1, int(sequential_terms_per_month))
+        # Anchor queries remain comparable; thematic rubrics are exploratory.
+        anchor_terms = broad_terms[: min(2, monthly_term_budget)]
+        exploratory_terms = merge_unique([
+            *broad_terms[len(anchor_terms):],
+            *(term for _, _, term, _ in article_term_steps),
+        ])
+        step_lookup = {term: (rubric, idx, term, terms) for rubric, idx, term, terms in article_term_steps}
+        for rubric, idx, term, terms in broad_term_steps:
+            step_lookup.setdefault(term, (rubric, idx, term, terms))
         for year in range(int(start_year), int(end_year) + 1):
             for source_key, modes, download_pdfs in sequential_source_layers:
                 if source_key == "articles":
-                    term_pool = article_term_steps or broad_term_steps
-                    if rng:
-                        sampled_year_terms = rng.sample(term_pool, min(monthly_term_budget, len(term_pool)))
-                    else:
-                        sampled_year_terms = term_pool[:monthly_term_budget]
-                    periods_for_source = [(None, sampled_year_terms)]
+                    periods_for_source = [(None, period_terms(
+                        anchor_terms, exploratory_terms, monthly_term_budget,
+                        int(sequential_seed), year if sequential_randomize else 0,
+                    ))]
                 else:
                     periods_for_source = []
                     for month in range(1, 13):
-                        if rng:
-                            sampled_terms = rng.sample(broad_term_steps, min(monthly_term_budget, len(broad_term_steps)))
-                        else:
-                            sampled_terms = broad_term_steps[:monthly_term_budget]
-                        periods_for_source.append((month, sampled_terms))
+                        periods_for_source.append((month, period_terms(
+                            anchor_terms, exploratory_terms, monthly_term_budget,
+                            int(sequential_seed), year * 12 + month if sequential_randomize else 0,
+                        )))
                 for month, selected_terms in periods_for_source:
-                    for rubric_name, term_index, term, rubric_terms in selected_terms:
+                    for term, search_role in selected_terms:
+                        rubric_name, term_index, _, rubric_terms = step_lookup.get(
+                            term, ("núcleo", 1, term, anchor_terms)
+                        )
                         step = dict(config)
                         step["start_year"] = int(year)
                         step["end_year"] = int(year)
@@ -6246,11 +6197,14 @@ if selected_source_run or run or run_sequential:
                         step["seed_url_file"] = config.get("seed_url_files_by_source", {}).get(source_key, "")
                         step["variant_rubric"] = rubric_name
                         step["variant_term"] = term
+                        step["search_role"] = search_role
                         step["variant_term_index"] = term_index
                         step["variant_rubric_terms"] = rubric_terms
                         step["classification_rubrics"] = selected_variant_rubrics
                         step["source_collection"] = source_key
                         step["target_source_type"] = (SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, ["other"]) or ["other"])[0]
+                        # An annual cap would stop later months and fabricate a trend.
+                        step["max_records_per_source_type_year"] = 0
                         period_label = f"{year}-{month:02d}" if month else str(year)
                         step["period_label"] = period_label
                         step["output_dir"] = str(Path(output_dir) / "by_rubric" / safe_key(rubric_name) / period_label / source_key / safe_key(term))
@@ -6271,7 +6225,8 @@ if selected_source_run or run or run_sequential:
             f"Corriendo plan secuencial amplio + clasificación: {len(plan)} pasos. "
             f"Web pública usa términos núcleo ({', '.join(broad_terms)}) y clasifica rubros después. "
             "Artículos científicos pueden usar variantes de rubro por año. "
-            "Se saltan pasos cuando una cuota anual ya se cumplió."
+            "La consulta ancla se repite por periodo; las etiquetas exploratorias rotan con semilla. "
+            "No se aplica un tope anual que suprima meses posteriores."
         )
     elif selected_source_run:
         source_key, modes, download_pdfs = selected_source_run

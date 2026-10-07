@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from source_adapters import cached_source
 
 import argparse
 import datetime as dt
@@ -21,6 +22,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Iterable
 
+from evidence_model import normalize_record, extract_publication_metadata, coverage_report, cell
+
 from source_profiles import (
     COMMON_NEWS_TAIL_CUT_MARKERS,
     DEFAULT_FORUM_DOMAINS,
@@ -36,7 +39,7 @@ CROSSREF_WORKS_ENDPOINT = "https://api.crossref.org/works"
 REDALYC_BASE_URL = "https://www.redalyc.org"
 REDDIT_SEARCH_RSS_ENDPOINT = "https://www.reddit.com/search.rss"
 USER_AGENT = "Mozilla/5.0 (compatible; SIANNarrativeResearch/1.0; +https://github.com/RomanUAM/sian-smart-data-narrativo)"
-ALLOW_SSL_FALLBACK = True
+ALLOW_SSL_FALLBACK = False
 ROBOTS_CACHE: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 
 
@@ -57,13 +60,14 @@ def unique_sequence(items: Iterable[str]) -> list[str]:
 
 
 def default_ssl_context() -> ssl.SSLContext:
-    """Return the best available SSL context for local macOS/Python installs."""
+    """Keep system/environment trust roots and add certifi for portable installs."""
+    context = ssl.create_default_context()
     try:
-        import certifi  # type: ignore
-
-        return ssl.create_default_context(cafile=certifi.where())
-    except Exception:
-        return ssl.create_default_context()
+        import certifi
+        context.load_verify_locations(cafile=certifi.where())
+    except (ImportError, OSError, ssl.SSLError):
+        pass
+    return context
 
 
 def open_url(req: urllib.request.Request, timeout: int = 30):
@@ -121,6 +125,11 @@ class NewsRecord:
     top_bigrams: list[dict] | None = None
     top_trigrams: list[dict] | None = None
     processing_status: str = ""
+    authors: list[str] | None = None
+    record_information: dict | None = None
+    published_date_kind: str = ""
+    retrieval_provenance: list[dict] | None = None
+    text_variants: list[dict] | None = None
 
 
 MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
@@ -141,6 +150,8 @@ def record_is_usable_for_analysis(record: NewsRecord) -> bool:
 
 
 def row_is_usable_for_analysis(row: dict) -> bool:
+    if row.get("selection", {}).get("state") == "excluded":
+        return False
     status = str(row.get("status") or "")
     text = str(row.get("text_normalized") or row.get("text_clean") or "")
     if status == "ok":
@@ -432,9 +443,8 @@ PDF_STOPWORDS = {
     "the", "and", "for", "with", "that", "this", "from", "are", "was", "were", "has", "have", "not",
     "los", "las", "del", "que", "por", "con", "para", "una", "uno", "como", "mas", "sus", "sin", "sobre",
     "entre", "tambien", "esta", "este", "estos", "estas", "desde", "donde", "cuando", "porque", "pero",
-    "dos", "tres", "ser", "son", "fue", "han", "hay", "the", "doi", "http", "https", "www",
-    "que", "com", "uma", "das", "dos", "por", "para", "com", "como", "mais", "sao", "foi", "entre",
-    "citar", "articulo", "articulos", "artigo", "numero", "completo", "informacion", "informa", "pagina",
+    "dos", "tres", "ser", "son", "fue", "han", "hay", "doi", "http", "https", "www",
+    "com", "uma", "das", "mais", "sao", "foi", "citar", "articulo", "articulos", "artigo", "numero", "completo", "informacion", "informa", "pagina",
     "site", "revista", "redalyc", "sistema", "org", "issn", "correo", "email", "vol", "num", "pp",
     "universidad", "universidade", "autonoma", "autónoma", "journal", "abstract", "resumen", "palabras",
     "clave", "keywords", "copyright", "creative", "commons", "licencia", "licence",
@@ -569,10 +579,8 @@ def robots_allowed(url: str) -> tuple[bool, str]:
 
 
 def safe_write_text_atomic(path: Path, text: str, encoding: str = "utf-8") -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    tmp_path.write_text(text, encoding=encoding)
-    tmp_path.replace(path)
+    from corpus_storage import atomic_write
+    atomic_write(path, text.encode(encoding))
 
 
 def download_pdf_file(pdf_url: str, output_dir: Path, year: int, record_id: str, timeout: int = 25) -> tuple[str, str]:
@@ -1010,12 +1018,15 @@ def search_gdelt_with_status(
     return [], "rate_limited"
 
 
+@cached_source("google_news_rss")
 def search_google_news_rss(query: str, start: dt.datetime, end: dt.datetime, max_records: int) -> tuple[list[dict], dict]:
     """Search public Google News RSS for one period.
 
     This does not scrape Google Scholar or Google web pages. It uses the public
     RSS endpoint as an additional news index and keeps extraction local.
     """
+    start = start.replace(tzinfo=dt.UTC) if start.tzinfo is None else start.astimezone(dt.UTC)
+    end = end.replace(tzinfo=dt.UTC) if end.tzinfo is None else end.astimezone(dt.UTC)
     q = f"{query} after:{start:%Y-%m-%d} before:{(end + dt.timedelta(days=1)):%Y-%m-%d}"
     params = {
         "q": q,
@@ -1041,7 +1052,7 @@ def search_google_news_rss(query: str, start: dt.datetime, end: dt.datetime, max
         if not parsed:
             undated_items += 1
             continue
-        if not (start <= parsed <= end + dt.timedelta(days=1)):
+        if not (start <= parsed <= end):
             outside_period_items += 1
             continue
         description = clean_text(html.unescape(item.findtext("description") or ""))
@@ -1052,6 +1063,9 @@ def search_google_news_rss(query: str, start: dt.datetime, end: dt.datetime, max
                 "url": link,
                 "title": title,
                 "seendate": published,
+                "publishedDate": parsed.isoformat(),
+                "published_date_kind": "publication",
+                "publisher_url": source_node.get("url", "") if source_node is not None else "",
                 "sourceCommonName": medium or "Google News RSS",
                 "domain": urllib.parse.urlparse(link).netloc.replace("www.", ""),
                 "language": "",
@@ -1077,18 +1091,18 @@ def parse_rss_datetime(value: str) -> dt.datetime | None:
     try:
         parsed = email.utils.parsedate_to_datetime(value)
         if parsed.tzinfo is None:
-            return parsed
-        return parsed.astimezone(dt.UTC).replace(tzinfo=None)
+            return parsed.replace(tzinfo=dt.UTC)
+        return parsed.astimezone(dt.UTC)
     except Exception:
         try:
             parsed = dt.datetime.strptime(value, "%a, %d %b %Y %H:%M:%S %z")
-            return parsed.astimezone(dt.UTC).replace(tzinfo=None)
+            return parsed.astimezone(dt.UTC)
         except Exception:
             return None
 
 
 def article_year(article: dict, fallback_year: int) -> int:
-    published = str(article.get("seendate", "") or article.get("publishedDate", "") or "")
+    published = str(article.get("publishedDate", "") or article.get("seendate", "") or "")
     if published[:4].isdigit():
         return int(published[:4])
     parsed_rss = parse_rss_datetime(published)
@@ -1101,9 +1115,14 @@ def parse_seed_date(value: str) -> dt.datetime | None:
     value = clean_text(value)
     if not value:
         return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parsed.replace(tzinfo=dt.UTC) if parsed.tzinfo is None else parsed.astimezone(dt.UTC)
+    except ValueError:
+        pass
     for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%Y/%m/%d", "%Y%m%d"):
         try:
-            return dt.datetime.strptime(value, fmt)
+            return dt.datetime.strptime(value, fmt).replace(tzinfo=dt.UTC)
         except Exception:
             continue
     parsed = parse_rss_datetime(value)
@@ -1156,14 +1175,8 @@ def load_seed_url_articles_from_path(path: Path) -> list[dict]:
         if not url:
             continue
         parsed_date = parse_seed_date(str(item.get("date") or item.get("fecha") or ""))
-        if not parsed_date:
-            try:
-                seed_year = int(str(item.get("year") or item.get("anio") or "").strip()[:4])
-                parsed_date = dt.datetime(seed_year, 1, 1)
-            except (TypeError, ValueError):
-                parsed_date = None
-        if not parsed_date:
-            continue
+        seed_year = str(item.get("year") or item.get("anio") or "").strip()
+        publication = parsed_date.date().isoformat() if parsed_date else seed_year if re.fullmatch(r"\d{4}", seed_year) else ""
         source_type = str(item.get("source_type") or "news")
         medium = clean_text(str(item.get("medium") or item.get("medio") or infer_medium({}, url)))
         pdf_url = clean_text(str(item.get("pdf_url") or item.get("pdf") or ""))
@@ -1172,11 +1185,14 @@ def load_seed_url_articles_from_path(path: Path) -> list[dict]:
             {
                 "url": url,
                 "title": clean_text(str(item.get("title") or item.get("titulo") or title_from_url(url))),
-                "seendate": parsed_date.strftime("%Y-%m-%d"),
+                "seendate": "",
+                "publishedDate": publication,
+                "published_date_verified": bool(item.get("published_date_verified")),
+                "seed_search_year": seed_year,
                 "sourceCommonName": medium,
                 "domain": urllib.parse.urlparse(url).netloc.replace("www.", ""),
                 "language": "Spanish",
-                "sourceCountry": "MX",
+                "sourceCountry": str(item.get("country") or ""),
                 "source_api": str(item.get("source_api") or "seed_url_list"),
                 "source_type_override": source_type,
                 "source_type_evidence_override": str(item.get("source_type_evidence") or "curated_seed_url"),
@@ -1199,6 +1215,7 @@ def source_types_in_seed_file(seed_url_file: str | Path | None) -> set[str]:
     }
 
 
+@cached_source("reddit_rss")
 def search_reddit_rss(query: str, start: dt.datetime, end: dt.datetime, max_records: int) -> list[dict]:
     """Search public Reddit RSS posts for one period.
 
@@ -1221,30 +1238,49 @@ def search_reddit_rss(query: str, start: dt.datetime, end: dt.datetime, max_reco
     )
     with open_url(req, timeout=20) as response:
         xml_text = response.read().decode("utf-8", errors="replace")
+    return parse_public_forum_feed(xml_text, start, end, max_records)
+
+
+def parse_public_forum_feed(xml_text: str, start: dt.datetime, end: dt.datetime, max_records: int) -> list[dict]:
+    """Parse public RSS or Atom without fabricating historical dates."""
+    start = start.replace(tzinfo=dt.UTC) if start.tzinfo is None else start.astimezone(dt.UTC)
+    end = end.replace(tzinfo=dt.UTC) if end.tzinfo is None else end.astimezone(dt.UTC)
     root = ET.fromstring(xml_text)
-    rows: list[dict] = []
-    for item in root.findall(".//item"):
-        title = clean_text(item.findtext("title") or "")
-        link = clean_text(item.findtext("link") or "")
-        published = clean_text(item.findtext("pubDate") or "")
+    rows = []
+    ns = {"a": "http://www.w3.org/2005/Atom"}
+    atom = root.tag == "{http://www.w3.org/2005/Atom}feed"
+    entries = root.findall("a:entry", ns) if atom else root.findall(".//item")
+    for item in entries:
+        if atom:
+            title = item.findtext("a:title", default="", namespaces=ns)
+            link_node = item.find("a:link", ns)
+            link = link_node.get("href", "") if link_node is not None else ""
+            published = item.findtext("a:published", default="", namespaces=ns)
+            # Atom updated is explicitly kept separate; never substitute for publication.
+            updated = item.findtext("a:updated", default="", namespaces=ns)
+            description = item.findtext("a:content", default="", namespaces=ns)
+            author = item.findtext("a:author/a:name", default="", namespaces=ns)
+        else:
+            title, link = item.findtext("title") or "", item.findtext("link") or ""
+            published = item.findtext("pubDate") or ""
+            updated, author = "", item.findtext("author") or ""
+            description = item.findtext("description") or ""
         parsed = parse_rss_datetime(published)
-        if parsed and not (start <= parsed <= end + dt.timedelta(days=1)):
+        if not parsed:
+            try:
+                parsed = dt.datetime.fromisoformat(published.replace("Z", "+00:00"))
+                if parsed.tzinfo is None:
+                    parsed = parsed.replace(tzinfo=dt.UTC)
+            except (ValueError, TypeError):
+                continue
+        if not start <= parsed <= end:
             continue
-        description = clean_text(html.unescape(item.findtext("description") or ""))
-        rows.append(
-            {
-                "url": link,
-                "title": title,
-                "seendate": published,
-                "sourceCommonName": "reddit.com",
-                "domain": "reddit.com",
-                "language": "",
-                "sourceCountry": "",
-                "source_api": "reddit_rss",
-                "source_type_override": "forum",
-                "rss_description": description,
-            }
-        )
+        rows.append({"url": clean_text(link), "title": clean_text(title),
+                     "seendate": published, "publishedDate": parsed.isoformat(),
+                     "updated_date": updated, "authors": [author] if author else [],
+                     "sourceCommonName": "Reddit", "domain": "reddit.com", "language": "",
+                     "sourceCountry": "", "source_api": "reddit_rss", "source_type_override": "forum",
+                     "rss_description": clean_text(html.unescape(description)), "feed_format": "atom" if atom else "rss"})
         if len(rows) >= max_records:
             break
     return rows
@@ -1280,29 +1316,23 @@ def passes_geographic_filter(
     text: str,
     country: str = "",
 ) -> tuple[bool, str]:
+    """Scope the *subject* of a document, not the location of its publisher.
+
+    A Mexican outlet can report on tattooing elsewhere, and a foreign journal
+    can publish research about Mexico. Source country remains separate metadata.
+    """
     scope = strip_for_compare(geographic_scope)
-    if not scope or scope in {"global", "global sin limite regional", "sin limite regional"}:
+    if not scope or scope.startswith("global") or scope == "sin limite regional":
         return True, "global_scope"
     terms = clean_query_variants("", geographic_terms)
     if not terms:
-        return True, "no_geographic_terms"
-    policy = source_access_policy(url)
-    policy_country = str(policy.get("country") or "").upper()
-    record_country = str(country or "").upper()
-    domain = urllib.parse.urlparse(url).netloc.lower()
-    if "mex" in scope:
-        if record_country == "MX" or policy_country == "MX" or domain.endswith(".mx") or ".com.mx" in domain or ".gob.mx" in domain:
-            return True, "mexico_source_or_domain"
-    latin_countries = {"MX", "AR", "BR", "CL", "CO", "PE", "UY", "PY", "BO", "EC", "VE", "CR", "PA", "GT", "HN", "SV", "NI", "DO", "CU", "PR"}
-    if "latin" in scope or "america latina" in scope or "latinoamerica" in scope:
-        if record_country in latin_countries or policy_country in latin_countries:
-            return True, "latin_america_source_country"
-    haystack = strip_for_compare(" ".join([url, medium, title, text[:4000]]))
+        return False, "scope_requires_geographic_terms"
+    haystack = strip_for_compare(" ".join([title, text[:4000]]))
     normalized_terms = [strip_for_compare(term) for term in terms if strip_for_compare(term)]
     for term in normalized_terms:
-        if term and term in haystack:
-            return True, f"geo_term:{term}"
-    return False, "missing_geographic_signal"
+        if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", haystack):
+            return True, f"subject_geo_term:{term}"
+    return False, "missing_subject_geographic_signal"
 
 
 def expanded_topic_terms(query: str, variants: list[str] | None = None) -> list[str]:
@@ -1458,6 +1488,7 @@ def strip_markup(value: str) -> str:
     return clean_text(value)
 
 
+@cached_source("openalex")
 def search_openalex_year(query: str, year: int, max_records: int, oa_only: bool = True) -> list[dict]:
     rows: list[dict] = []
     cursor = "*"
@@ -1487,6 +1518,7 @@ def search_openalex_year(query: str, year: int, max_records: int, oa_only: bool 
     return rows[:max_records]
 
 
+@cached_source("crossref")
 def search_crossref_year(query: str, year: int, max_records: int, timeout: int = 8) -> list[dict]:
     params = {
         "query.bibliographic": query,
@@ -1514,6 +1546,7 @@ def redalyc_pdf_url(item: dict) -> str:
     return urllib.parse.urljoin(REDALYC_BASE_URL, path)
 
 
+@cached_source("redalyc")
 def search_redalyc_year(query: str, year: int, max_records: int, timeout: int = 8) -> list[dict]:
     """Search Redalyc public article endpoint and keep records from the requested year.
 
@@ -1581,10 +1614,10 @@ def openalex_record(
     country = institution_countries[0] if institution_countries else ""
     institutions = ", ".join(institution_names[:8])
     concepts = ", ".join((concept.get("display_name") or "") for concept in (item.get("concepts") or [])[:8])
-    text_clean = clean_text(" ".join(part for part in [title, abstract, author_names, institutions, concepts] if part))
+    text_clean = clean_text(" ".join(part for part in [title, abstract] if part))
     text_normalized = strip_for_compare(text_clean)
     scientific_min_text_chars = min(min_text_chars, 40)
-    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    status = "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
     evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
     return NewsRecord(
         query=query,
@@ -1600,7 +1633,8 @@ def openalex_record(
         medium=medium,
         url=landing_page_url,
         title=title,
-        published_date=str(item.get("publication_date") or year),
+        published_date=str(item.get("publication_date") or item.get("publication_year") or ""),
+        authors=[(a.get("author") or {}).get("display_name") for a in authorships if (a.get("author") or {}).get("display_name")],
         language=str(item.get("language") or ""),
         country=country,
         text_raw_visible=text_clean,
@@ -1646,13 +1680,13 @@ def crossref_record(
         clean_text(" ".join([str(author.get("given", "")), str(author.get("family", ""))]))
         for author in (item.get("author") or [])[:8]
     )
-    text_clean = clean_text(" ".join(part for part in [title, abstract, authors, subjects] if part))
+    text_clean = clean_text(" ".join(part for part in [title, abstract] if part))
     text_normalized = strip_for_compare(text_clean)
     published = item.get("published-print") or item.get("published-online") or item.get("published")
-    date_parts = (published or {}).get("date-parts") or [[year]]
-    published_date = "-".join(str(part) for part in date_parts[0]) if date_parts and date_parts[0] else str(year)
+    date_parts = (published or {}).get("date-parts") or []
+    published_date = "-".join(str(part) if i == 0 else f"{int(part):02d}" for i, part in enumerate(date_parts[0])) if date_parts and date_parts[0] else ""
     scientific_min_text_chars = min(min_text_chars, 40)
-    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    status = "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
     evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
     return NewsRecord(
         query=query,
@@ -1683,6 +1717,7 @@ def crossref_record(
         status=status,
         error="",
         pdf_url=pdf_url,
+        authors=[clean_text(" ".join([str(a.get("given", "")), str(a.get("family", ""))])) for a in (item.get("author") or [])],
     )
 
 
@@ -1706,10 +1741,10 @@ def redalyc_record(
     abstract = strip_markup(str(item.get("resumen") or "").replace(">>>", ". "))
     content = strip_markup(str(item.get("contenido") or ""))
     journal_institution = strip_markup(str(item.get("nomInstitucionRev") or ""))
-    text_clean = clean_text(" ".join(part for part in [title, abstract, keywords, authors, journal_institution, content] if part))
+    text_clean = clean_text(" ".join(part for part in [title, abstract, content] if part))
     text_normalized = strip_for_compare(text_clean)
     scientific_min_text_chars = min(min_text_chars, 40)
-    status = "ok" if len(text_clean) >= scientific_min_text_chars and pdf_url else "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
+    status = "ok_partial" if len(text_clean) >= scientific_min_text_chars else "too_short"
     evidence_level, evidence_weight = evidence_rank_for_source_type("scientific_article")
     return NewsRecord(
         query=query,
@@ -1725,7 +1760,8 @@ def redalyc_record(
         medium=medium or "Redalyc",
         url=url,
         title=title,
-        published_date=str(item.get("anioArticulo") or item.get("anoEdcNum") or year),
+        published_date=str(item.get("anioArticulo") or item.get("anoEdcNum") or ""),
+        authors=[authors] if authors else [],
         language=str(item.get("idiomaArticulo") or ""),
         country=str(item.get("paisRevista") or item.get("paisInstitucion") or ""),
         text_raw_visible=text_clean,
@@ -1930,12 +1966,7 @@ def normalize_dedup_text(value: str) -> str:
     return " ".join(value.split())
 
 
-def canonical_url_key(url: str) -> str:
-    url = (url or "").strip().lower()
-    url = re.sub(r"^https?://", "", url)
-    url = re.sub(r"^www\.", "", url)
-    url = url.split("#", 1)[0].split("?", 1)[0]
-    return url.rstrip("/")
+from corpus_contract import canonical_url_key, identity_key, merge_rows, merge_record, is_record
 
 
 def canonical_doi_key(*values: str) -> str:
@@ -1954,19 +1985,7 @@ def document_dedup_key_from_values(
     medium: str = "",
     pdf_url: str = "",
 ) -> str:
-    doi = canonical_doi_key(url, pdf_url)
-    if doi:
-        return f"doi:{doi}"
-    normalized_url = canonical_url_key(url)
-    normalized_title = normalize_dedup_text(title)
-    normalized_medium = normalize_dedup_text(medium)
-    if normalized_title and year and normalized_medium:
-        return f"title_year_medium:{year}:{normalized_medium}:{normalized_title[:180]}"
-    if normalized_url:
-        return f"url:{normalized_url}"
-    if normalized_title and year:
-        return f"title_year:{year}:{normalized_title[:180]}"
-    return ""
+    return identity_key(dict(url=url, title=title, year=year, medium=medium, pdf_url=pdf_url))
 
 
 def document_dedup_key(record: NewsRecord) -> str:
@@ -2074,9 +2093,24 @@ def crawl_news(
             f"Seed URLs loaded: {len(seed_url_articles)} from {seed_url_file}"
             f"{' · source_types=' + ','.join(seed_types) if seed_types else ''}"
         )
-    seen_document_keys: set[str] = set()
+    record_positions: dict[str, int] = {}
     records: list[NewsRecord] = []
     accepted_by_year_type: dict[tuple[int, str], int] = {}
+
+    def retain_record(record: NewsRecord) -> tuple[NewsRecord, bool]:
+        key = document_dedup_key(record)
+        if key in record_positions:
+            position = record_positions[key]
+            prior = records[position]
+            old_usable = record_is_usable_for_analysis(prior)
+            combined = merge_record(asdict(prior), asdict(record))
+            combined["year"] = combined.get("year") or prior.year
+            record = NewsRecord(**{field: combined[field] for field in NewsRecord.__dataclass_fields__ if field in combined})
+            records[position] = record
+            return record, not old_usable and record_is_usable_for_analysis(record)
+        record_positions[key] = len(records)
+        records.append(record)
+        return record, record_is_usable_for_analysis(record)
 
     def can_accept_record(year: int, source_type: str) -> bool:
         cap = int(max_records_per_source_type_year or 0)
@@ -2109,7 +2143,10 @@ def crawl_news(
             return False
         return all(accepted_count(int(year), source_type) >= target for source_type in required_source_type_set)
 
-    periods = list(month_periods(start_year, end_year, start_month=start_month, end_month=end_month))
+    cutoff = dt.datetime.now(dt.UTC)
+    periods = [(start.replace(tzinfo=dt.UTC), min(end.replace(tzinfo=dt.UTC), cutoff))
+               for start, end in month_periods(start_year, end_year, start_month=start_month, end_month=end_month)
+               if start.replace(tzinfo=dt.UTC) <= cutoff]
     gdelt_news_cooldown_until = 0
     gdelt_forums_cooldown_until = 0
     run_indexed_news = bool(seed_url_articles) or any(mode in active_source_modes for mode in {"gdelt_news", "institutional_gdelt", "forums", "google_news_rss", "reddit_rss", "seed_urls"})
@@ -2139,7 +2176,8 @@ def crawl_news(
         articles: list[dict] = []
         seed_rows_for_period = [
             row for row in seed_url_articles
-            if (parsed := parse_seed_date(str(row.get("seendate") or ""))) and start <= parsed <= end
+            if ((parsed := parse_seed_date(str(row.get("publishedDate") or ""))) and start <= parsed <= end)
+            or (not parse_seed_date(str(row.get("publishedDate") or "")) and period_index == 1)
         ]
         if seed_rows_for_period:
             articles.extend(seed_rows_for_period)
@@ -2389,11 +2427,9 @@ def crawl_news(
                 break
             url = str(article.get("url", "")).strip()
             dedup_key = article_dedup_key(article, start.year)
-            if not url or (dedup_key and dedup_key in seen_document_keys):
+            if not url:
                 continue
-            if dedup_key:
-                seen_document_keys.add(dedup_key)
-            published = str(article.get("seendate", "") or article.get("publishedDate", ""))
+            published = str(article.get("publishedDate", "") or article.get("seendate", ""))
             year = article_year(article, start.year)
             medium = infer_medium(article, url)
             title = clean_text(str(article.get("title", "")))
@@ -2441,6 +2477,7 @@ def crawl_news(
             ]))
             metadata_partial_text = rss_partial_text or title
 
+            publication_metadata = {}
             force_partial_access = False
             access_policy = {"access": "unknown"}
             try:
@@ -2453,6 +2490,7 @@ def crawl_news(
                     if not allowed:
                         raise PermissionError(robots_note)
                     page = request_html(url, timeout=12)
+                    publication_metadata = extract_publication_metadata(page)
                     text_raw_visible = extract_visible_text(page)
                 cleaned = clean_article_text(text_raw_visible, title=title, source_url=url)
                 text_clean = cleaned["text_clean"]
@@ -2545,6 +2583,11 @@ def crawl_news(
                     progress(f"cap_reached: {year} · {source_type} · max {max_records_per_source_type_year}/year/type")
                 continue
 
+            # Explicit index metadata can fill a missing HTML field; conflicts remain unresolved.
+            if publication_metadata.get("author", {}).get("state") == "not_found" and article.get("authors"):
+                publication_metadata["author"] = cell(article["authors"], "explicit", "index.authors", str(article.get("source_api") or "index"))
+            if publication_metadata.get("publication_date", {}).get("state") == "not_found" and article.get("publishedDate") and ("rss" in str(article.get("source_api") or "") or article.get("published_date_verified")):
+                publication_metadata["publication_date"] = cell(article["publishedDate"], "explicit", "rss.publishedDate", "rss_metadata")
             record = NewsRecord(
                 query=query,
                 query_variants=clean_variants,
@@ -2575,14 +2618,17 @@ def crawl_news(
                 error=error,
                 pdf_url=str(article.get("pdf_url") or ""),
                 source_weight_factor=source_weight_factor,
+                authors=[str(v) for v in (article.get("authors") or [])] if isinstance(article.get("authors"), list) else ([str(article["authors"])] if article.get("authors") else []),
+                record_information=publication_metadata or None,
+                published_date_kind="observation" if article.get("seendate") and not article.get("publishedDate") else "publication",
             )
             if download_pdfs and record.pdf_url:
                 pdf_file, pdf_status = download_pdf_file(record.pdf_url, output_dir, record.year, stable_id(record.url or record.pdf_url), timeout=10)
                 record.pdf_file = pdf_file
                 record.pdf_status = pdf_status
                 record = enrich_record_with_pdf_text(record)
-            records.append(record)
-            if record_is_usable_for_analysis(record):
+            record, count_new = retain_record(record)
+            if count_new:
                 mark_accepted_record(record.year, record.source_type)
             try:
                 save_incremental_record(output_dir, record)
@@ -2615,7 +2661,7 @@ def crawl_news(
                 f"OpenAlex OA queries: {', '.join(academic_queries)}"
                 + (" · strict_open_access_articles=true" if strict_open_access_articles else " · includes metadata fallback")
             )
-        for year in range(start_year, end_year + 1):
+        for year in range(start_year, min(end_year, cutoff.year) + 1):
             if should_stop(stop_requested):
                 if progress:
                     progress("Stopped by user before next OpenAlex year.")
@@ -2663,10 +2709,8 @@ def crawl_news(
                     min_text_chars=min_text_chars,
                 )
                 dedup_key = document_dedup_key(record)
-                if not record.url or (dedup_key and dedup_key in seen_document_keys):
+                if not record.url:
                     continue
-                if dedup_key:
-                    seen_document_keys.add(dedup_key)
                 if strict_open_access_articles and not record.pdf_url:
                     if progress:
                         progress(f"excluded_closed_or_metadata_only: {year} · OpenAlex · no_pdf_url · {record.medium} · {record.title[:70]}")
@@ -2715,8 +2759,8 @@ def crawl_news(
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
                     record = enrich_record_with_pdf_text(record)
-                records.append(record)
-                if record_is_usable_for_analysis(record):
+                record, count_new = retain_record(record)
+                if count_new:
                     mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
@@ -2739,7 +2783,7 @@ def crawl_news(
                 f"Crossref queries: {', '.join(academic_queries)}"
                 + (" · only records with PDF/full-text link are accepted" if strict_open_access_articles else " · metadata-only allowed")
             )
-        for year in range(start_year, end_year + 1):
+        for year in range(start_year, min(end_year, cutoff.year) + 1):
             if should_stop(stop_requested):
                 if progress:
                     progress("Stopped by user before next Crossref year.")
@@ -2775,10 +2819,8 @@ def crawl_news(
                     min_text_chars=min_text_chars,
                 )
                 dedup_key = document_dedup_key(record)
-                if not record.url or (dedup_key and dedup_key in seen_document_keys):
+                if not record.url:
                     continue
-                if dedup_key:
-                    seen_document_keys.add(dedup_key)
                 if strict_open_access_articles and not record.pdf_url:
                     if progress:
                         progress(f"excluded_closed_or_metadata_only: {year} · Crossref · no_pdf_url · {record.medium} · {record.title[:70]}")
@@ -2827,8 +2869,8 @@ def crawl_news(
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
                     record = enrich_record_with_pdf_text(record)
-                records.append(record)
-                if record_is_usable_for_analysis(record):
+                record, count_new = retain_record(record)
+                if count_new:
                     mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
@@ -2848,7 +2890,7 @@ def crawl_news(
     if "redalyc" in active_source_modes:
         if progress:
             progress(f"Redalyc OA queries: {', '.join(academic_queries)} · Latin American open-access repository")
-        for year in range(start_year, end_year + 1):
+        for year in range(start_year, min(end_year, cutoff.year) + 1):
             if should_stop(stop_requested):
                 if progress:
                     progress("Stopped by user before next Redalyc year.")
@@ -2886,10 +2928,8 @@ def crawl_news(
                     min_text_chars=min_text_chars,
                 )
                 dedup_key = document_dedup_key(record)
-                if not record.url or (dedup_key and dedup_key in seen_document_keys):
+                if not record.url:
                     continue
-                if dedup_key:
-                    seen_document_keys.add(dedup_key)
                 if strict_open_access_articles and not record.pdf_url:
                     if progress:
                         progress(f"excluded_closed_or_metadata_only: {year} · Redalyc · no_pdf_url · {record.medium} · {record.title[:70]}")
@@ -2938,8 +2978,8 @@ def crawl_news(
                     record.pdf_file = pdf_file
                     record.pdf_status = pdf_status
                     record = enrich_record_with_pdf_text(record)
-                records.append(record)
-                if record_is_usable_for_analysis(record):
+                record, count_new = retain_record(record)
+                if count_new:
                     mark_accepted_record(record.year, record.source_type)
                 try:
                     save_incremental_record(output_dir, record)
@@ -2979,7 +3019,7 @@ def save_incremental_record(output_dir: Path, record: NewsRecord) -> None:
     filename = f"{record.year}_{safe_slug(record.medium)}_{stable_id(record.url)}.json"
     safe_write_text_atomic(
         year_dir / filename,
-        json.dumps(asdict(record), ensure_ascii=False, indent=2),
+        json.dumps(normalize_record(asdict(record)), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -2987,7 +3027,7 @@ def save_incremental_record(output_dir: Path, record: NewsRecord) -> None:
 def append_record_jsonl(output_dir: Path, record: NewsRecord) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     with (output_dir / "news_records_incremental.jsonl").open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(asdict(record), ensure_ascii=False) + "\n")
+        fh.write(json.dumps(normalize_record(asdict(record)), ensure_ascii=False) + "\n")
 
 
 def save_outputs(output_dir: Path, records: list[NewsRecord], scan_existing: bool = True) -> None:
@@ -3000,7 +3040,7 @@ def save_outputs(output_dir: Path, records: list[NewsRecord], scan_existing: boo
                 item = json.loads(file_path.read_text(encoding="utf-8"))
             except Exception:
                 continue
-            if isinstance(item, dict):
+            if is_record(item):
                 key = document_dedup_key_from_values(
                     url=str(item.get("url") or ""),
                     title=str(item.get("title") or ""),
@@ -3008,11 +3048,11 @@ def save_outputs(output_dir: Path, records: list[NewsRecord], scan_existing: boo
                     medium=str(item.get("medium") or ""),
                     pdf_url=str(item.get("pdf_url") or ""),
                 ) or str(file_path)
-                data_by_url[key] = item
+                data_by_url[key] = merge_rows([data_by_url[key], item])[0] if key in data_by_url else item
     for record in records:
-        item = asdict(record)
+        item = normalize_record(asdict(record))
         data_by_url[document_dedup_key(record) or stable_id(str(item))] = item
-    data = list(data_by_url.values())
+    data = merge_rows(data_by_url.values())
     data.sort(key=lambda item: (item.get("year") or 0, item.get("medium") or "", item.get("title") or ""))
     safe_write_text_atomic(output_dir / "news_records.json", json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     safe_write_text_atomic(
@@ -3028,10 +3068,11 @@ def stable_json_hash(value) -> str:
 
 
 def write_cli_manifest(output_dir: Path, config: dict, records: list[NewsRecord], status: str, error: str = "") -> None:
-    rows = [asdict(record) for record in records]
+    rows = [normalize_record(asdict(record)) for record in records]
     manifest = {
         "system": "SIAN",
-        "manifest_version": 1,
+        "manifest_version": 2,
+        "information_coverage": coverage_report(rows),
         "execution": "local_cli_news_spider",
         "analysis_policy": "heuristic_local_no_external_llm",
         "started_or_finished_at": dt.datetime.now(dt.UTC).isoformat(),

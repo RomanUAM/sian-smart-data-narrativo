@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from evidence_model import normalize_record
+
 import csv
 import copy
 import json
@@ -31,7 +33,7 @@ STOPWORDS = {
     "both", "but", "by", "can", "did", "do", "does", "doing", "down", "during", "each",
     "few", "for", "from", "further", "had", "has", "have", "having", "he", "her", "here",
     "hers", "herself", "him", "himself", "his", "how", "i", "if", "in", "into", "is",
-    "it", "its", "itself", "just", "me", "more", "most", "my", "myself", "no", "nor",
+    "it", "its", "itself", "just", "more", "most", "my", "myself", "nor",
     "not", "now", "of", "off", "on", "once", "only", "or", "other", "our", "ours",
     "out", "over", "own", "same", "she", "should", "so", "some", "such", "than", "that",
     "the", "their", "theirs", "them", "themselves", "then", "there", "these", "they",
@@ -40,7 +42,7 @@ STOPWORDS = {
     "with", "would", "will", "shall", "might", "must", "could", "you", "your", "yours",
     # Corpus noise
     "http", "https", "www", "com", "org", "doi", "journal", "news", "article", "said",
-    "says", "also", "could", "would", "may", "one", "two", "new", "use", "used", "using",
+    "says", "also", "may", "one", "two", "new", "use", "used", "using",
     "via", "get", "got", "see", "read", "share", "follow", "subscribe", "newsletter",
     "cookie", "cookies", "privacy", "policy", "advertisement", "ads", "login", "sign",
     "copyright", "rights", "reserved", "image", "photo", "video", "posted", "post",
@@ -244,7 +246,7 @@ ACTOR_NOISE_TERMS = {
     "discussion", "english", "figure", "figures", "global", "introduction", "journal",
     "kota", "method", "methods", "objective", "objectives", "results", "source",
     "study", "table", "tattoo", "tattoos", "tatuaje", "tatuajes", "title", "unknown",
-    "articulo", "artículos", "articulos", "conclusion", "conclusiones", "discusion",
+    "articulo", "artículos", "articulos", "conclusiones", "discusion",
     "introduccion", "metodo", "metodos", "objetivo", "resultados", "revista",
 }
 
@@ -351,13 +353,22 @@ def read_record_file(file_path: Path) -> dict | None:
         data = json.loads(file_path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    return data if isinstance(data, dict) else None
+    return data if isinstance(data, dict) and any(data.get(k) for k in ("url", "title", "text_clean", "pdf_text_clean")) else None
 
 
 def load_records_from_path(path: str | Path) -> list[dict]:
+    return [normalize_record(row) for row in _load_records_from_path(path) if isinstance(row, dict) and any(row.get(k) for k in ("url", "title", "text_clean", "pdf_text_clean"))]
+
+
+def _load_records_from_path(path: str | Path) -> list[dict]:
     path = Path(path)
     if path.is_dir():
         candidates = [
+            path / "news_records_sequential_merged.jsonl",
+            path / "news_records_sequential_merged.json",
+            path / "news_records_merged.jsonl",
+            path / "news_records_merged.json",
+            path / "news_records_recleaned.jsonl",
             path / "news_records.jsonl",
             path / "news_records.json",
             path / "news_records_recleaned.json",
@@ -381,7 +392,7 @@ def load_records_from_path(path: str | Path) -> list[dict]:
                     continue
                 if data:
                     records.append(data)
-        records.sort(key=lambda item: (item.get("year") or 0, item.get("medium") or "", item.get("title") or ""))
+        records.sort(key=lambda item: (str(item.get("year") or ""), str(item.get("medium") or ""), str(item.get("title") or "")))
         return records
 
     if not path.exists():
@@ -412,15 +423,12 @@ def load_records_from_path(path: str | Path) -> list[dict]:
 
 
 def save_records_json(records: list[dict], output_dir: str | Path) -> None:
+    records = [normalize_record(row) for row in records]
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "news_records.json").write_text(
-        json.dumps(records, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    with (output_dir / "news_records.jsonl").open("w", encoding="utf-8") as fh:
-        for record in records:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    from corpus_storage import atomic_json, atomic_write
+    atomic_json(output_dir / "news_records.json", records)
+    atomic_write(output_dir / "news_records.jsonl", "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in records))
 
 
 def normalize_token_text(text: str) -> str:
@@ -645,6 +653,8 @@ MIN_PARTIAL_ANALYSIS_TEXT_CHARS = 100
 
 
 def record_has_usable_text(record: dict) -> bool:
+    if record.get("selection", {}).get("state") == "excluded":
+        return False
     status = str(record.get("status") or "")
     text = str(record.get("text_normalized") or record.get("text_clean") or "")
     if status == "ok":
@@ -741,7 +751,7 @@ def narrative_flow_stage(source_type: str) -> dict:
 def enrich_records_for_analysis(records: list[dict]) -> list[dict]:
     enriched = []
     for record in records:
-        row = dict(record)
+        row = normalize_record(record)
         if not row.get("source_type"):
             row["source_type"] = "other"
         row["analysis_language"] = row_language(row)
@@ -780,7 +790,7 @@ def filter_records(
 def count_rows(records: list[dict], fields: list[str]) -> list[dict]:
     counts = Counter(tuple(record.get(field, "unknown") for field in fields) for record in records)
     rows = []
-    for key, count in sorted(counts.items(), key=lambda item: (-item[1], item[0])):
+    for key, count in sorted(counts.items(), key=lambda item: (-item[1], tuple(str(v) for v in item[0]))):
         row = {field: value for field, value in zip(fields, key)}
         row["records"] = count
         rows.append(row)
@@ -1235,7 +1245,7 @@ def greedy_weighted_node_cover(
         best_id = ""
         best_value = -math.inf
         best_eval = None
-        for node_id in allowed_ids:
+        for node_id in sorted(allowed_ids):
             if node_id in selected_ids:
                 continue
             candidate_eval = _evaluate_cover_solution(
@@ -1329,6 +1339,14 @@ def greedy_weighted_node_cover(
     }
 
 
+def edge_weight(edge):
+    value = edge.get("weight", 1)
+    weight = float(1 if value is None else value)
+    if not math.isfinite(weight) or weight < 0:
+        raise ValueError("Edge weights must be finite and nonnegative")
+    return weight
+
+
 def _cover_problem_data(
     graph: dict,
     allowed_node_types: Iterable[str] | None = None,
@@ -1363,7 +1381,7 @@ def _cover_problem_data(
         "coverage_mode": coverage_mode,
         "total_nodes": len(candidates) or 1,
         "total_node_weight": sum(float(nodes[node_id].get("score", 0) or 0) for node_id in candidates) or 1.0,
-        "total_edge_weight": sum(float(edge.get("weight", 1) or 1) for edge in edges) or 1.0,
+        "total_edge_weight": sum(edge_weight(edge) for edge in edges),
     }
 
 
@@ -1411,7 +1429,7 @@ def _evaluate_cover_solution(
         }
         removed_edge_ids = all_edge_ids - covered_edges
     covered_edge_weight = sum(
-        float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+        edge_weight(problem["edge_by_id"][edge_id])
         for edge_id in covered_edges
     )
     selected_node_score = sum(
@@ -1424,7 +1442,7 @@ def _evaluate_cover_solution(
     total_node_weight = problem.get("total_node_weight") or 1.0
     removed_edges = len(removed_edge_ids)
     removed_edge_weight = sum(
-        float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+        edge_weight(problem["edge_by_id"][edge_id])
         for edge_id in removed_edge_ids
     )
     selected_node_share = len(selected) / total_nodes
@@ -1457,7 +1475,7 @@ def _evaluate_cover_solution(
         "selected_node_score": selected_node_score,
         "covered_edges": len(covered_edges),
         "covered_edge_weight": covered_edge_weight,
-        "covered_weight_share": covered_edge_weight / problem["total_edge_weight"],
+        "covered_weight_share": covered_edge_weight / (problem["total_edge_weight"] or 1.0),
         "preserved_edges": preserved_edges,
         "preserved_edge_weight": preserved_edge_weight,
         "preserved_edges_share": preserved_edges_share,
@@ -1501,7 +1519,7 @@ def _cover_result_from_ids(
     removed_edge_ids = set()
     selected_node_score = 0.0
     selected_rows = []
-    total_edge_weight = problem["total_edge_weight"]
+    total_edge_weight = problem["total_edge_weight"] or 1.0
     total_edges = max(1, len(problem["edges"]))
     total_nodes = problem.get("total_nodes") or max(1, len(problem.get("candidates", [])))
     total_node_weight = problem.get("total_node_weight") or 1.0
@@ -1532,15 +1550,15 @@ def _cover_result_from_ids(
         new_edges = covered_edges - previous_edges
         new_removed_edges = removed_edge_ids - previous_removed
         new_removed_weight = sum(
-            float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+            edge_weight(problem["edge_by_id"][edge_id])
             for edge_id in new_removed_edges
         )
         covered_weight = sum(
-            float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+            edge_weight(problem["edge_by_id"][edge_id])
             for edge_id in covered_edges
         )
         removed_edge_weight = sum(
-            float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+            edge_weight(problem["edge_by_id"][edge_id])
             for edge_id in removed_edge_ids
         )
         selected_node_score += float(node.get("score", 0) or 0)
@@ -1553,7 +1571,7 @@ def _cover_result_from_ids(
                 "node_score": node.get("score", 0),
                 "marginal_edges_covered": len(new_edges),
                 "marginal_weight_covered": round(
-                    sum(float(problem["edge_by_id"][edge_id].get("weight", 1) or 1) for edge_id in new_edges),
+                    sum(edge_weight(problem["edge_by_id"][edge_id]) for edge_id in new_edges),
                     3,
                 ),
                 "marginal_edges_removed": len(new_removed_edges),
@@ -1569,11 +1587,11 @@ def _cover_result_from_ids(
         )
     removed_edges = len(removed_edge_ids)
     removed_edge_weight = sum(
-        float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+        edge_weight(problem["edge_by_id"][edge_id])
         for edge_id in removed_edge_ids
     )
     covered_weight = sum(
-        float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+        edge_weight(problem["edge_by_id"][edge_id])
         for edge_id in covered_edges
     )
     return {
@@ -1591,7 +1609,7 @@ def _cover_result_from_ids(
             "uncovered_edges": removed_edges,
             "preserved_edges": len(covered_edges),
             "removed_edges": removed_edges,
-            "total_edge_weight": round(total_edge_weight, 3),
+            "total_edge_weight": round(problem["total_edge_weight"], 3),
             "covered_edge_weight": round(covered_weight, 3),
             "preserved_edge_weight": round(covered_weight, 3),
             "removed_edge_weight": round(removed_edge_weight, 3),
@@ -1766,7 +1784,7 @@ def cover_problem_signature(problem: dict, max_nodes: int, purpose: str = "") ->
                 str(edge.get("source", "")),
                 str(edge.get("target", "")),
                 str(edge.get("edge_type", "")),
-                round(float(edge.get("weight", 1) or 1), 6),
+                round(edge_weight(edge), 6),
             )
             for edge in problem.get("edges", [])
         )
@@ -1809,7 +1827,7 @@ def relaxed_lp_reference_points(problem: dict, max_nodes: int) -> dict:
     min_nodes = 1
     node_index = {node_id: index for index, node_id in enumerate(candidates)}
     node_weights = [float(problem["nodes"][node_id].get("score", 0) or 0) for node_id in candidates]
-    edge_weights = [float(edge.get("weight", 1) or 1) for edge in edges]
+    edge_weights = [edge_weight(edge) for edge in edges]
     total_node_weight = problem.get("total_node_weight") or sum(node_weights) or 1.0
     total_edge_weight = problem.get("total_edge_weight") or sum(edge_weights) or 1.0
 
@@ -1938,7 +1956,7 @@ def relaxed_lp_seed_solutions(problem: dict, max_nodes: int) -> dict:
     }
     incident_weight = {
         node_id: sum(
-            float(problem["edge_by_id"][edge_id].get("weight", 1) or 1)
+            edge_weight(problem["edge_by_id"][edge_id])
             for edge_id in problem["incident"].get(node_id, set())
         )
         for node_id in candidates
@@ -1956,7 +1974,7 @@ def relaxed_lp_seed_solutions(problem: dict, max_nodes: int) -> dict:
         n = len(candidates)
         m = len(edges)
         node_index = {node_id: index for index, node_id in enumerate(candidates)}
-        edge_weights = [float(edge.get("weight", 1) or 1) for edge in edges]
+        edge_weights = [edge_weight(edge) for edge in edges]
         variable_count = n + m
         bounds = [(0.0, 1.0)] * variable_count
         a_ub = []
@@ -3351,7 +3369,7 @@ def local_louvain_communities(nodes: list[dict], edges: list[dict], node_key: st
         if not a or not b or a == b:
             continue
         key = tuple(sorted((a, b)))
-        edge_weights[key] += float(edge.get("weight", 1) or 1)
+        edge_weights[key] += edge_weight(edge)
         neighbors[a].add(b)
         neighbors[b].add(a)
 
@@ -3413,7 +3431,7 @@ def detect_weighted_communities(
             graph.add_edge(
                 str(edge.get("source")),
                 str(edge.get("target")),
-                weight=float(edge.get("weight", 1) or 1),
+                weight=edge_weight(edge),
             )
         if graph.number_of_edges() == 0:
             return {"algorithm": "none", "modularity": 0.0, "communities": community_rows_from_sets([{node} for node in node_ids])}

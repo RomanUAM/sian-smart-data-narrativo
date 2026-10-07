@@ -35,3 +35,7 @@ publication/render_*_docx/
 !publication/*.tex
 !publication/*.pdf
 !publication/*.docx
+
+# Source query cache and pipeline scratch data
+.sian_cache/
+pipeline_output/

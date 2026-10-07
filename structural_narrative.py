@@ -263,6 +263,8 @@ def extract_structural_propositions(records: list[dict], max_sentences_per_doc: 
             rows.append(
                 {
                     "proposition_id": proposition_id,
+                    "review_status": "candidate",
+                    "model_kind": "lexical_heuristic",
                     "record_hash": custody_hash,
                     "sentence_index": idx,
                     "year": record.get("year"),
@@ -459,6 +461,8 @@ def extract_argument_frames(records: list[dict], max_sentences_per_doc: int = 60
         text = clean_space(" ".join([str(record.get("title") or ""), str(record.get("text_clean") or record.get("text_normalized") or "")]))
         sentences = split_sentences(text, max_sentences=max_sentences_per_doc)
         frame = {
+            "review_status": "candidate",
+            "model_kind": "lexical_heuristic",
             "frame_id": hashlib.sha1(f"{record_custody_hash(record)}:frame".encode("utf-8")).hexdigest()[:16],
             "record_hash": record_custody_hash(record),
             "year": record.get("year"),
@@ -514,7 +518,8 @@ def temporal_frame_deltas(frames: list[dict], similarity_threshold: float = 0.82
     """Capa 3: store only changes in frame structure across time per source."""
     grouped: dict[str, list[dict]] = defaultdict(list)
     for frame in frames:
-        grouped[str(frame.get("medium") or "unknown")].append(frame)
+        if str(frame.get("year") or "").isdigit():
+            grouped[str(frame.get("medium") or "unknown")].append(frame)
     deltas = []
     for medium, rows in grouped.items():
         rows = sorted(rows, key=lambda item: (int(item.get("year") or 0), str(item.get("frame_id"))))
@@ -532,6 +537,8 @@ def temporal_frame_deltas(frames: list[dict], similarity_threshold: float = 0.82
                 })
                 previous = row
                 continue
+            if row.get("year") == previous.get("year"):
+                continue  # An annual date cannot establish intra-year document order.
             sim = jaccard_similarity(tokenize_light(row.get("frame_terms", "")), tokenize_light(previous.get("frame_terms", "")))
             changed_fields = [
                 field for field in ["problem", "culprit", "solution", "urgency"]
@@ -555,7 +562,7 @@ def temporal_frame_deltas(frames: list[dict], similarity_threshold: float = 0.82
 def silence_alerts(frames: list[dict], expected_topics: list[str], silence_threshold: float = 0.70) -> list[dict]:
     """Capa 4: flag expected topics absent from most sources."""
     sources = {str(frame.get("medium") or "unknown") for frame in frames}
-    total_sources = max(1, len(sources))
+    total_sources = len(sources)
     alerts = []
     for topic in [clean_space(topic).lower() for topic in expected_topics if clean_space(topic)]:
         mentioning_sources = {
@@ -569,15 +576,17 @@ def silence_alerts(frames: list[dict], expected_topics: list[str], silence_thres
                 str(frame.get("frame_terms", "")),
             ]).lower()
         }
-        missing_share = 1.0 - (len(mentioning_sources) / total_sources)
+        missing_share = 1.0 - (len(mentioning_sources) / total_sources) if total_sources else None
         alerts.append({
             "expected_topic": topic,
             "sources_total": total_sources,
             "sources_mentioning": len(mentioning_sources),
-            "missing_share": round(missing_share, 5),
-            "alert": missing_share >= silence_threshold,
-            "relation_type": "IGNORA_A" if missing_share >= silence_threshold else "CUBRE_A",
-            "storage_decision": "high_value_silence_alert" if missing_share >= silence_threshold else "no_alert",
+            "missing_share": round(missing_share, 5) if missing_share is not None else None,
+            "review_status": "candidate",
+            "interpretation": "lexical_non_detection_in_recovered_frames_only",
+            "alert": missing_share is not None and missing_share >= silence_threshold,
+            "relation_type": "NO_DETECTADO_EN_MUESTRA" if not mentioning_sources else "MENCION_DETECTADA",
+            "storage_decision": "review_coverage_gap" if missing_share is not None and missing_share >= silence_threshold else "no_alert",
         })
     return alerts
 

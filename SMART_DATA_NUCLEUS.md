@@ -120,3 +120,18 @@ pesada. La arquitectura está pensada para exportarse a Neo4j:
 
 Neo4j debe verse como siguiente fase de infraestructura, no como condición para
 que el prototipo funcione.
+
+
+## Actualización de evidencia: 6 de octubre de 2026
+
+La disponibilidad de autor, fecha, fuente, actores o postura no se garantiza.
+Cada campo conserva valor, evidencia, método y estado; los faltantes no son cero.
+La publicación se separa de actualización, consulta y año de búsqueda.
+Cada análisis informa su subconjunto utilizable y cobertura. Los resultados
+heurísticos son candidatos; las afirmaciones y relaciones revisadas requieren
+fragmentos de respaldo. Un enlace PDF no equivale a texto completo recuperado.
+
+La especificación vigente, modelos descriptivos y pseudocódigos están en
+[EVIDENCIA_Y_MODELOS.md](EVIDENCIA_Y_MODELOS.md). Esta política prevalece sobre
+supuestos de completitud de versiones anteriores. Los documentos históricos
+conservan sus límites y no se recalculan por actualizar el software.

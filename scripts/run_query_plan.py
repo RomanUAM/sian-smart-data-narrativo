@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+from corpus_storage import atomic_write
 
 import argparse
 from collections import Counter
@@ -29,32 +30,13 @@ def load_plan(path: Path) -> list[dict]:
 
 
 def merge_rows(rows: list[dict]) -> list[dict]:
-    merged: dict[str, dict] = {}
-    for row in rows:
-        key = str(row.get("url") or row.get("title") or "")
-        if not key:
-            continue
-        if key not in merged:
-            merged[key] = row
-            continue
-        prior = merged[key]
-        for field in ["variant_rubric", "variant_term", "source_collection"]:
-            values = []
-            for value in [prior.get(field), row.get(field)]:
-                for part in str(value or "").split(","):
-                    part = part.strip()
-                    if part and part not in values:
-                        values.append(part)
-            prior[field] = ", ".join(values)
-    return sorted(
-        merged.values(),
-        key=lambda item: (item.get("year") or 0, item.get("source_type") or "", item.get("medium") or ""),
-    )
+    from corpus_contract import merge_rows as shared_merge
+    return shared_merge(rows)
 
 
 def write_json(path: Path, value) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(value, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    atomic_write(path, json.dumps(value, ensure_ascii=False, indent=2, default=str), encoding='utf-8')
 
 
 def main() -> None:
@@ -137,7 +119,8 @@ def main() -> None:
             progress=print,
         )
         for record in records:
-            row = asdict(record)
+            from evidence_model import normalize_record
+            row = normalize_record(asdict(record))
             row["variant_rubric"] = step.get("variant_rubric", "")
             row["variant_term"] = step.get("variant_term", "")
             row["variant_term_index"] = step.get("variant_term_index", "")
@@ -149,10 +132,7 @@ def main() -> None:
 
     merged_rows = merge_rows(all_rows)
     write_json(output_dir / "news_records_sequential_merged.json", merged_rows)
-    (output_dir / "news_records_sequential_merged.jsonl").write_text(
-        "\n".join(json.dumps(row, ensure_ascii=False) for row in merged_rows) + ("\n" if merged_rows else ""),
-        encoding="utf-8",
-    )
+    atomic_write(output_dir / 'news_records_sequential_merged.jsonl', '\n'.join((json.dumps(row, ensure_ascii=False) for row in merged_rows)) + ('\n' if merged_rows else ''), encoding='utf-8')
     manifest["finished_at"] = time.strftime("%Y-%m-%dT%H:%M:%S%z")
     manifest["status"] = "finished"
     manifest["records_total"] = len(all_rows)
