@@ -31,7 +31,7 @@ def merge_record(prior, incoming):
     result = copy.deepcopy(a)
     for field in ('source_collection', 'variant_rubric', 'variant_term', 'search_role', 'narrative_rubrics', 'narrative_rubric_terms'):
         result[field] = ', '.join(sorted({part.strip() for row in (a, b)
-                                        for part in str(row.get(field) or '').split(',') if part.strip()}))
+                                        for part in (row.get(field) if isinstance(row.get(field),list) else str(row.get(field) or '').split(',')) if str(part).strip()}))
     provenance = []
     for row in (a, b):
         provenance.extend(row.get('retrieval_provenance') or [])
@@ -68,7 +68,7 @@ def merge_record(prior, incoming):
                 result['record_information'][field] = copy.deepcopy(max((old, incoming_cell), key=lambda c: len(str(c.get('value')))))
             else:
                 result['record_information'][field] = {'value': None, 'state': 'conflicting', 'method': 'merge_conflict', 'evidence': _union([old, incoming_cell])}
-    for field in ('versions','retrievals','record_history','document_relations'):
+    for field in ('collection_origins','collection_rubrics','narrative_terms','versions','retrievals','record_history','document_relations'):
         result[field] = _union((a.get(field) or []) + (b.get(field) or []))
     result['claims'] = _union((a.get('claims') or []) + (b.get('claims') or []))
     for field, flat in (('author', 'authors'), ('publication_date', 'published_date'), ('update_date', 'updated_date')):

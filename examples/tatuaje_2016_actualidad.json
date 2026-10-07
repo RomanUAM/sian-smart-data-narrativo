@@ -1,0 +1,132 @@
+{
+  "query": "tatuaje",
+  "topic_terms": [
+    "tatuaje",
+    "tatuajes",
+    "tatuador",
+    "tattoo",
+    "tattoos",
+    "arte corporal",
+    "body art"
+  ],
+  "classification_rubrics": {
+    "núcleo": [
+      "tatuaje",
+      "tatuajes",
+      "tattoo",
+      "tattoos",
+      "arte corporal",
+      "body art",
+      "tatuaje corporal"
+    ],
+    "oficio_industria": [
+      "tatuador",
+      "tatuadora",
+      "tatuadores",
+      "tattoo artist",
+      "artista del tatuaje",
+      "estudio de tatuajes",
+      "tattoo studio"
+    ],
+    "sentido_identidad": [
+      "significado de tatuaje",
+      "significado de los tatuajes",
+      "tatuaje identidad",
+      "tatuaje memoria",
+      "tatuaje pertenencia",
+      "tatuaje duelo",
+      "tatuaje simbólico",
+      "tatuaje religioso"
+    ],
+    "sociedad_trabajo": [
+      "tatuaje juventud",
+      "tatuaje género",
+      "tatuaje discriminación",
+      "tatuaje empleo",
+      "tatuaje violencia",
+      "tatuaje feminista"
+    ],
+    "salud_regulacion": [
+      "tatuaje salud",
+      "tatuaje alergia",
+      "tatuaje infección",
+      "tintas para tatuaje",
+      "regulación sanitaria tatuajes",
+      "maquillaje permanente"
+    ],
+    "estetica_diseño": [
+      "diseño de tatuaje",
+      "diseños de tatuajes",
+      "tinta corporal",
+      "body ink",
+      "tatuaje artístico",
+      "tatuaje tradicional",
+      "tatuaje mexicano",
+      "tatuajes mexicanos",
+      "tatuaje prehispánico",
+      "tatuaje ritual"
+    ]
+  },
+  "start_year": 2016,
+  "end_year": 2026,
+  "target_total_per_year": 200,
+  "geographic_scope": "global",
+  "geographic_terms": [],
+  "domains": [],
+  "min_text_chars": 300,
+  "max_records_per_month": 100,
+  "delay_seconds": 1,
+  "search_delay_seconds": 8,
+  "strict_open_access_articles": true,
+  "sequential_synonym_limit": 8,
+  "sequential_terms_per_month": 2,
+  "sequential_randomize": true,
+  "sequential_seed": 2026,
+  "historical_sitemaps": [],
+  "seed_url_files_by_source": {
+    "news": "seed_sources/tatuaje_mexico_news_seed_urls.json",
+    "forums": "seed_sources/tatuaje_public_conversation_seed_urls.json",
+    "institutional": "seed_sources/tatuaje_institutional_seed_urls.json",
+    "articles": "seed_sources/tatuaje_academic_seed_urls.json"
+  },
+  "sequential_source_layers": [
+    {
+      "source_collection": "news",
+      "source_modes": [
+        "gdelt_news",
+        "google_news_rss"
+      ],
+      "download_pdfs": false
+    },
+    {
+      "source_collection": "forums",
+      "source_modes": [
+        "forums"
+      ],
+      "download_pdfs": false
+    },
+    {
+      "source_collection": "institutional",
+      "source_modes": [
+        "institutional_gdelt"
+      ],
+      "download_pdfs": false
+    },
+    {
+      "source_collection": "articles",
+      "source_modes": [
+        "openalex_oa",
+        "crossref",
+        "redalyc"
+      ],
+      "download_pdfs": true
+    },
+    {
+      "source_collection": "reports_other",
+      "source_modes": [
+        "gdelt_news"
+      ],
+      "download_pdfs": false
+    }
+  ]
+}

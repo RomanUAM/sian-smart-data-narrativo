@@ -1,5 +1,7 @@
 # Estrategias de extracción por medio
 
+La ejecución histórica versión 3 está implementada en el coordinador independiente y documentada en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md). Mantiene el contrato de evidencia v2, añade tareas transaccionales, cuota total anual, control compartido de límites, archivo recuperable y cobertura por motivos. Esta especificación sustituye la ejecución ligada a una sesión y las cuotas automáticas por tipo; no convierte los informes históricos en nuevas mediciones.
+
 ## Arquitectura de perfiles de fuente
 
 La extracción ya no debe depender de una lista suelta de dominios. Cada medio se

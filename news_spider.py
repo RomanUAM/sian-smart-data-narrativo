@@ -990,32 +990,41 @@ def search_gdelt_with_status(
     label: str = "GDELT",
 ) -> tuple[list[dict], str]:
     """Search GDELT and return an explicit status for adaptive/circuit-breaker flows."""
-    for attempt in range(1, attempts + 1):
-        try:
-            return search_gdelt(query, start, end, max_records), "ok"
-        except urllib.error.HTTPError as exc:
-            if exc.code == 429:
-                wait_seconds = base_wait_seconds * attempt
-                if progress:
-                    progress(f"{label} rate limit {start:%Y-%m}: attempt {attempt}/{attempts}; wait {wait_seconds:.0f}s")
-                if interruptible_sleep(wait_seconds, stop_requested):
-                    return [], "stopped"
-                continue
-            raise
-        except Exception as exc:  # noqa: BLE001
-            message = str(exc)
-            if "non_json_response:Parentheses may only be used around OR'd statements" in message:
-                if progress:
-                    progress(f"{label} rejected {start:%Y-%m}: invalid parentheses syntax.")
-                return [], "bad_query"
-            if "non_json_response:Your query was too short or too long" in message:
-                if progress:
-                    progress(f"{label} rejected {start:%Y-%m}: query too short/long.")
-                return [], "bad_query"
-            raise
-    if progress:
-        progress(f"{label} skipped {start:%Y-%m}: rate limit persisted; skipping rest of this source/month.")
-    return [], "rate_limited"
+    from source_control import remaining, cooldown, cached_query, save_query
+    from record_schema import digest
+    if start.year < 2017:
+        if progress: progress(f"{label}: unsupported_period; DOC 2.0 comienza en 2017.")
+        return [], "unsupported_period"
+    key=digest({'engine':'gdelt','query':query,'start':str(start),'end':str(end),'max':max_records})
+    cached=cached_query(key)
+    if cached is not None: return cached['rows'], cached['status']
+    if remaining('gdelt') > 0:
+        if progress: progress(f"{label}: deferred; cooldown compartido {remaining('gdelt'):.0f}s.")
+        _mark_task_deferred()
+        return [], "rate_limited"
+    try:
+        rows=search_gdelt(query,start,end,max_records)
+        save_query(key,{'rows':rows,'status':'ok'})
+        return rows,"ok"
+    except urllib.error.HTTPError as exc:
+        if exc.code != 429: raise
+        wait=cooldown('gdelt',exc.headers.get('Retry-After') if exc.headers else None)
+        if progress: progress(f"{label}: rate_limited; próxima consulta permitida en {wait:.0f}s.")
+        _mark_task_deferred()
+        return [],"rate_limited"
+    except Exception as exc:
+        if 'non_json_response:' in str(exc) and any(t in str(exc) for t in ('Parentheses','too short','too long')):
+            save_query(key,{'rows':[],'status':'bad_query'})
+            return [],'bad_query'
+        raise
+
+
+def _mark_task_deferred():
+    import os
+    path=os.environ.get('SIAN_SOURCE_STATE','')
+    if path.endswith('job.sqlite3'):
+        from collection_jobs import Job
+        Job(Path(path).parent).set('task_deferred',True)
 
 
 @cached_source("google_news_rss")
@@ -1194,7 +1203,7 @@ def load_seed_url_articles_from_path(path: Path) -> list[dict]:
                 "language": "Spanish",
                 "sourceCountry": str(item.get("country") or ""),
                 "source_api": str(item.get("source_api") or "seed_url_list"),
-                "source_type_override": source_type,
+                "source_type_override": "" if item.get("infer_source_type") else source_type,
                 "source_type_evidence_override": str(item.get("source_type_evidence") or "curated_seed_url"),
                 "pdf_url": pdf_url,
                 "doi": doi,
@@ -2048,6 +2057,7 @@ def crawl_news(
     save_every: int = 25,
     progress=None,
     stop_requested=None,
+    on_record=None,
 ) -> list[NewsRecord]:
     if start_year > end_year:
         raise ValueError("start_year must be <= end_year")
@@ -2098,6 +2108,8 @@ def crawl_news(
     accepted_by_year_type: dict[tuple[int, str], int] = {}
 
     def retain_record(record: NewsRecord) -> tuple[NewsRecord, bool]:
+        if on_record is not None:
+            on_record(normalize_record(asdict(record)))
         key = document_dedup_key(record)
         if key in record_positions:
             position = record_positions[key]

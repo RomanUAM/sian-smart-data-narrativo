@@ -26,6 +26,12 @@ class SourceAdapter:
         if reader is None:
             import news_spider
             reader=getattr(news_spider,ENGINES[engine])
+            reader=getattr(reader,'__wrapped__',reader)
+        from source_control import remaining, cooldown
+        if remaining(engine)>0:
+            from news_spider import _mark_task_deferred
+            _mark_task_deferred()
+            raise TimeoutError(f"{engine}: deferred_shared_cooldown")
         attempts=[]; result=None; last_error=None
         for attempt in range(1,self.max_attempts+1):
             try:
@@ -36,6 +42,11 @@ class SourceAdapter:
             except Exception as exc:
                 last_error=exc
                 attempts.append({'attempt':attempt,'status':'failed','error':type(exc).__name__+': '+str(exc)})
+                if isinstance(exc,urllib.error.HTTPError) and exc.code==429:
+                    cooldown(engine,exc.headers.get('Retry-After') if exc.headers else None)
+                    from news_spider import _mark_task_deferred
+                    _mark_task_deferred()
+                    break
                 transient=isinstance(exc,(TimeoutError,urllib.error.URLError)) and (not isinstance(exc,urllib.error.HTTPError) or exc.code in {429,500,502,503,504})
                 if not transient or attempt==self.max_attempts:break
                 time.sleep(min(2,attempt))

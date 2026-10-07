@@ -32,7 +32,7 @@
   group/.style={rectangle, rounded corners=3mm, draw=black!35, dashed, inner sep=4mm}
 }
 
-\title{Algoritmo local para recolección secuencial y análisis de narrativas}
+\title{SIAN recolección histórica y análisis de narrativas}
 \author{}
 \date{}
 
@@ -73,7 +73,7 @@ y capas de fuente:
 S=\{\text{noticias},\text{foros},\text{artículos},\text{reportes}\}.
 \]
 
-La corrida publicable se ejecuta de manera lineal:
+El marco de lectura distingue estas dimensiones, sin exigir el producto completo de consultas:
 \[
 \forall r\in R,\quad \forall y\in Y,\quad \forall s\in S.
 \]
@@ -168,7 +168,7 @@ preparar análisis interpretativo o publicación. \\
   \draw[arrow] (f6) -- (f7);
   \draw[arrow] (f7) -- (f8);
   \draw[arrow] (f8) -- (f9);
-  \draw[dashedarrow] (f9.south) .. controls +(0,-16mm) and +(0,-16mm) .. node[below,font=\scriptsize] {revisión humana y ajuste del corpus} (f1.south);
+  \draw[dashedarrow] (f9.west) -- ++(-12mm,0) |- (f1.west);
 \end{tikzpicture}%
 }
 \caption{Resumen de fases para lectura humanística: el proceso es iterativo y auditable.}
@@ -237,57 +237,50 @@ cuidado del corpus: limpiar, registrar y fusionar sin perder trazabilidad. La
 última línea corresponde al análisis: describir patrones, observar relaciones y
 producir una síntesis revisable.
 
-\section{Corrida secuencial por rubro, término, año y fuente}
+\section{Coordinador histórico y tareas recuperables}
 
-La recolección se define como un conjunto de tareas:
-\[
-T=\{(r,v,y,s): r\in R,\ v\in V_r,\ y\in Y,\ s\in S^\star\},
-\]
-donde \(V_r\) es la lista ordenada de términos y sinónimos del rubro \(r\), y
-\(S^\star\subseteq S\) son las capas seleccionadas por el usuario. Cada tarea
-usa un solo término \(v\), no todos los sinónimos a la vez. Si una cuota anual
-por tipo de fuente ya se cumplió, los pasos restantes de ese año y capa se
-saltan. Cada tarea produce una base parcial \(D_{r,v,y,s}\). La base total antes
-de análisis es:
-\[
-D=\bigcup_{r\in R}\bigcup_{v\in V_r}\bigcup_{y\in Y}\bigcup_{s\in S^\star}D_{r,v,y,s},
-\]
-desduplicada por URL o título.
+La versión de ejecución 3 guarda primero el plan y después ejecuta tareas
+por periodo, consulta y capacidad de fuente. Los motores académicos usan
+periodos anuales; las fuentes públicas usan ventanas mensuales. Los años y
+capas se intercalan. Los rubros clasifican el texto recuperado y no multiplican
+la meta. La cuota total anual comparte documentos entre todas las capas.
+
+Documento, versión y recuperación son unidades distintas. DOI y URL canónica
+definen identidad. No se fusionan documentos distintos por títulos similares.
+Las copias exactas entre URLs se conservan con relación de duplicado, pero sólo
+una cuenta para la cuota. Publicación explícita y válida determina el año;
+detección, consulta, actualización y \texttt{lastmod} no lo sustituyen.
 
 \begin{figure}[ht]
 \centering
-\begin{tikzpicture}[node distance=9mm and 7mm]
-  \node[smallblock, fill=cInput] (start) {Inicio};
-  \node[smallblock, fill=cRun, below=of start] (rubro) {Elegir un rubro\\del tema};
-  \node[smallblock, fill=cRun, below=of rubro] (term) {Elegir un término\\del rubro};
-  \node[smallblock, fill=cRun, below=of term] (year) {Elegir un año};
-  \node[smallblock, fill=cRun, below=of year] (source) {Elegir una capa\\de fuente};
-  \node[smallblock, fill=cRun, below=of source] (query) {Formular búsqueda\\clara y breve};
-  \node[smallblock, fill=cRun, below=of query] (search) {Consultar\\fuentes públicas};
-  \node[decision, fill=cWarn, below=of search] (found) {¿hay\\resultados?};
-  \node[smallblock, fill=cData, below left=10mm and 13mm of found] (empty) {Registrar\\vacío o falla};
-  \node[smallblock, fill=cRun, below right=10mm and 13mm of found] (download) {Recuperar texto\\o resumen};
-  \node[smallblock, fill=cData, below=of download] (save) {Guardar\\evidencia};
-  \node[decision, fill=cWarn, below=of save] (more) {¿faltan\\pasos?};
-  \node[smallblock, fill=cData, below=of more] (merge) {Unir corpus\\sin duplicados};
-
-  \draw[arrow] (start) -- (rubro);
-  \draw[arrow] (rubro) -- (term);
-  \draw[arrow] (term) -- (year);
-  \draw[arrow] (year) -- (source);
-  \draw[arrow] (source) -- (query);
-  \draw[arrow] (query) -- (search);
-  \draw[arrow] (search) -- (found);
-  \draw[arrow] (found) -- node[left,font=\scriptsize] {no} (empty);
-  \draw[arrow] (found) -- node[right,font=\scriptsize] {sí} (download);
-  \draw[arrow] (download) -- (save);
-  \draw[arrow] (save) -- (more);
-  \draw[arrow] (empty) |- (more);
-  \draw[arrow] (more) -- node[right,font=\scriptsize] {no} (merge);
-  \draw[dashedarrow] (more.west) .. controls +(-34mm,0) and +(-34mm,0) .. node[left,font=\scriptsize] {sí} (term.west);
+\begin{tikzpicture}[node distance=8mm and 10mm]
+  \node[smallblock, fill=cInput] (plan) {Configuración y\\plan persistente};
+  \node[smallblock, fill=cRun, below=of plan] (task) {Tomar tarea\\pendiente};
+  \node[decision, fill=cWarn, below=of task] (available) {¿fuente\\disponible?};
+  \node[smallblock, fill=cData, right=of available] (wait) {Guardar pausa\\o fallo};
+  \node[smallblock, fill=cRun, below=of available] (fetch) {Recuperar\\evidencia permitida};
+  \node[smallblock, fill=cData, below=of fetch] (save) {Confirmar registro\\en SQLite};
+  \node[smallblock, fill=cRun, below=of save] (validate) {Validar publicación\\texto y duplicados};
+  \node[smallblock, fill=cData, below=of validate] (coverage) {Corpus cobertura\\y respaldo};
+  \draw[arrow] (plan) -- (task);
+  \draw[arrow] (task) -- (available);
+  \draw[arrow] (available) -- node[above,font=\scriptsize] {no} (wait);
+  \draw[arrow] (available) -- node[right,font=\scriptsize] {sí} (fetch);
+  \draw[arrow] (fetch) -- (save);
+  \draw[arrow] (save) -- (validate);
+  \draw[arrow] (validate) -- (coverage);
+  \draw[dashedarrow] (wait.north) |- (task.east);
 \end{tikzpicture}
-\caption{Ejecución secuencial adaptativa. Cada paso reporta rubro, término, año, capa de fuente y número de documentos.}
+\caption{Ejecución independiente de la página. Los límites del proveedor quedan guardados y las tareas pendientes pueden reanudarse.}
 \end{figure}
+
+El proceso confirma cada documento antes de cerrar una tarea. Un bloqueo impide
+dos trabajadores por base. Recargar la página no cancela el trabajador. La pérdida
+del disco requiere un volumen persistente, respaldo externo configurado o un ZIP
+completo conservado por la persona. Los ZIP anteriores pueden migrarse sin
+inventar documentos recuperados. La interfaz distingue cuota alcanzada, pausa,
+interrupción, fuentes pendientes y final con brechas. El año corriente se corta
+al presente. El manual completo está en \texttt{RECOLECCION\_HISTORICA.md}.
 
 Esta fase existe para evitar una ilusión frecuente: obtener muchos documentos
 pero de una sola clase. Si sólo aparecen artículos científicos, no hay base
@@ -330,7 +323,7 @@ como si fuera texto completo.
 \end{figure}
 
 En consecuencia, los estados no son detalles técnicos sino categorías de
-evidencia. \texttt{ok} indica texto suficiente para análisis textual completo;
+evidencia. \texttt{ok} indica texto recuperado utilizable, sin certificar extensión completa;
 \texttt{ok\_partial} indica una señal pública útil pero limitada; \texttt{too\_short}
 preserva registros breves que no deben inflar análisis de texto; y los errores
 se reportan como límites de la muestra. La publicación debe informar cuántos
@@ -521,7 +514,7 @@ f_3(C)=\frac{\sum_a w_ar_a}{\sum_a w_a}\quad \text{minimizar}.
   \draw[arrow] (candidates) -- (archive);
   \draw[arrow] (archive) -- (review);
   \draw[arrow] (archive) -- (metrics);
-  \draw[dashedarrow] (review) .. controls +(0,-16mm) and +(0,-16mm) .. node[below,font=\scriptsize] {ajuste interpretativo} (corpus);
+  \draw[dashedarrow] (review.south) -- ++(0,-8mm) -| ([xshift=-8mm]corpus.west) -- (corpus.west);
 \end{tikzpicture}%
 }
 \caption{Síntesis revisable: del corpus al mapa, del mapa a nodos relevantes y de allí a lectura crítica.}

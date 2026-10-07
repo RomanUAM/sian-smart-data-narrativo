@@ -39,3 +39,9 @@ publication/render_*_docx/
 # Source query cache and pipeline scratch data
 .sian_cache/
 pipeline_output/
+
+# Recoverable collection jobs and local deliverables
+.sian_jobs/
+deliverables/
+
+publication/collection_render/

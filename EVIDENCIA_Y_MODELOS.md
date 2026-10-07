@@ -1,5 +1,7 @@
 # SIAN: evidencia disponible, datos faltantes y modelos descriptivos
 
+La ejecución histórica versión 3 está implementada en el coordinador independiente y documentada en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md). Mantiene el contrato de evidencia v2, añade tareas transaccionales, cuota total anual, control compartido de límites, archivo recuperable y cobertura por motivos. Esta especificación sustituye la ejecución ligada a una sesión y las cuotas automáticas por tipo; no convierte los informes históricos en nuevas mediciones.
+
 Versión metodológica: 6 de octubre de 2026. Esta política sustituye cualquier
 instrucción anterior que permita confundir año de búsqueda con publicación,
 enlace PDF con texto completo, coocurrencia con relación validada o falta de

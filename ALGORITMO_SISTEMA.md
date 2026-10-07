@@ -1,5 +1,7 @@
 # Guía metodológica del sistema local de análisis narrativo
 
+La ejecución histórica versión 3 está implementada en el coordinador independiente y documentada en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md). Mantiene el contrato de evidencia v2, añade tareas transaccionales, cuota total anual, control compartido de límites, archivo recuperable y cobertura por motivos. Esta especificación sustituye la ejecución ligada a una sesión y las cuotas automáticas por tipo; no convierte los informes históricos en nuevas mediciones.
+
 Este documento resume la arquitectura actual del sistema. La versión formal con
 figuras TikZ está en `publication/algoritmo_sistema_narrativo.tex`.
 
@@ -60,9 +62,10 @@ El usuario define:
 - capas de fuente a correr;
 - exclusiones conceptuales;
 - dominios incluidos o excluidos;
-- cuota máxima por año y tipo de fuente.
-- mínimos obligatorios para capas sociales: por defecto 50 noticias y 50
-  registros de foros/conversaciones por año cuando se corren esas capas.
+- meta total de documentos únicos por año, compartida entre capas;
+- texto mínimo y fuentes históricas disponibles.
+
+No se imponen automáticamente 50 noticias y 50 foros. La distribución por fuentes se informa como cobertura y requiere un diseño independiente para inferencias sociales.
 
 Los medios no se tratan como dominios sueltos. El sistema usa un catálogo de
 perfiles de fuente (`source_profiles.py`) donde cada medio tiene país, región,
@@ -89,75 +92,32 @@ Los conectores solos (`y`, `e`, `o`, `and`, `or`, `de`, `en`) no se usan como
 variantes. Si se quiere estudiar una relación, se expresa como frase sustantiva:
 `tatuaje empleo`, no `tatuaje y empleo`.
 
-## Corrida secuencial
+## Coordinador histórico recuperable
 
-La recolección publicable se ejecuta linealmente:
+El plan se guarda antes de consultar. Se intercalan años, meses y capas; las consultas académicas son anuales y las públicas mensuales. Las fuentes se eligen por capacidad temporal. Los sitemaps tienen cursor y no aportan fechas de publicación mediante `lastmod`.
 
 ```text
-para cada año:
-  para cada mes:
-    para cada capa pública seleccionada:
-      tomar una muestra reproducible de N términos/rubros
-      para cada término muestreado:
-        construir consulta corta
-        buscar índices
-        revisar permisos de extracción
-        descargar texto permitido o registrar señal parcial
-        limpiar texto
-        clasificar fuente
-        guardar JSON incremental
-        si la cuota año/tipo ya se cumplió, saltar pasos restantes
+guardar configuración y plan en SQLite
+para cada tarea pendiente o diferida:
+  comprobar pausa solicitada y cuota total del año
+  comprobar capacidad temporal y cooldown del motor
+  consultar índices, semillas o archivos permitidos
+  recuperar y limpiar el contenido disponible
+  confirmar cada registro con identidad y procedencia
+  validar publicación, pertinencia y copias exactas
+  actualizar cuota anual compartida y motivos de exclusión
+  confirmar tarea o conservarla como pendiente, fallida o diferida
+  exportar corpus y cobertura; intentar respaldo configurado
+cerrar con pausa, cuota alcanzada, fuentes pendientes o brechas
 ```
 
-La unidad de recuperación ya no es “todos los sinónimos juntos”, sino un término
-por vez. Además, en noticias, foros, instituciones y reportes la corrida no usa
-todos los términos cada mes: toma una muestra aleatoria reproducible, por defecto
-ocho términos por mes y capa. Esto reduce saturación de índices públicos,
-disminuye sesgo por orden fijo, permite saber qué término recuperó cada documento
-y evita mezclar sentidos distintos del tópico. Reddit se usa como fuente pública
-opcional y tardía; no debe ser la ruta principal para construir conversación
-social.
+`collection_runner.py` corre fuera de la sesión Streamlit. `collection_jobs.py` guarda tareas y documentos; `source_control.py` comparte pausas dentro de la ejecución. Una recarga recupera la misma base mediante su código. Un ZIP completo permite restaurarla si se pierde el disco. El bloqueo de proceso evita trabajadores simultáneos sobre la misma ejecución.
 
-Los artículos científicos se tratan de forma anual, no mensual, porque OpenAlex
-y Crossref recuperan obras por año y repetir la búsqueda cada mes duplicaría
-registros sin aportar nueva evidencia temporal fina.
+Noticias, foros, instituciones, artículos y reportes conservan su tipo y procedencia. La capa de reportes sigue siendo búsqueda general, no un índice especializado. La conjugación fusiona identidades mediante DOI o URL y preserva versiones y conflictos. Copias exactas entre URLs se retienen pero sólo una contribuye a la cuota.
 
-Capas disponibles:
+La pantalla muestra meta total, documentos seleccionados y brecha por año, además de distribuciones por fuente, rubro y mes. Los parciales, faltantes de fecha y errores no se transforman en éxito. Alcanzar la cuota puede omitir tareas pendientes de ese año: el corpus es una muestra de disponibilidad y no una serie representativa de tendencias.
 
-- noticias;
-- foros/conversaciones públicas;
-- gobierno/instituciones;
-- artículos científicos + PDFs cuando exista URL abierta;
-- reportes/otros.
-
-Los botones por capa aplican una regla de aceptación: `Noticias` sólo guarda
-registros `news`; `Foros/conversaciones` sólo guarda registros `forum`;
-`Gobierno/instituciones` sólo guarda `institutional_report`. Esto evita que
-artículos científicos o fuentes no sociales llenen la cuota. Si no se alcanza
-el mínimo anual configurado, el sistema reporta `coverage_gap` y la muestra
-debe leerse como insuficiente para narrativa social amplia.
-
-La araña mezclada conserva un tablero de balance antes y durante la corrida:
-por cada año se muestran tipos objetivo, mínimo deseado y máximo anual. Cada
-registro aceptado actualiza un contador tipo/año (`news 17/100`,
-`forum 8/100`). Al cierre de cada mes se reporta `balance_status` separando
-mínimo y máximo (`news 19/min 50 · max 100`). La categoría
-`other` se conserva para auditoría, pero no debe usarse como objetivo de balance
-social porque mezcla casos dudosos.
-
-Si la corrida mezclada incluye artículos científicos, la ejecución se estratifica
-automáticamente: primero se consulta OpenAlex/Crossref por año y después se
-recorren las capas mensuales de prensa, foros e instituciones. Así la ausencia
-de artículos aparece pronto como brecha real de recuperación y no como un cero
-temporal causado por el orden del pipeline.
-
-La capa `reportes/otros` todavía debe leerse con cautela: actualmente funciona
-como búsqueda general que después puede clasificarse como reporte u otro tipo
-cuando la evidencia lo indique. No equivale todavía a un índice especializado de
-reportes institucionales.
-
-Esto permite saber qué fuente, año y rubro ya terminaron y qué parte quedó
-vacía o falló.
+La especificación completa, estados y comandos están en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md).
 
 ## Extracción responsable
 
@@ -198,9 +158,7 @@ El JSON fusionado conserva:
 - estado de extracción;
 - evidencia de clasificación.
 
-Cada corrida desde la app guarda un manifiesto local inicial:
-`run_manifest.json`. Cuando existe corrida secuencial, también guarda
-`query_plan.json` con el plan exacto de términos, meses, capas y semilla. Esto
+Cada ejecución guarda `run_manifest.json`, `query_plan.json`, `coverage.json`, `coverage_annual.csv` y la base SQLite. El manifiesto incluye hashes de configuración y plan, capacidades y estado de tareas. Esto
 permite auditar qué se intentó aunque la recolección se detenga. Para una
 publicación estrictamente reproducible conviene añadir después un hash final del
 corpus resultante y una auditoría manual de una muestra por fuente.

@@ -1,140 +1,50 @@
 # Arquitectura de SIAN
 
-SIAN es un sistema local para construir y analizar corpus narrativos
-estratificados. No es una araña de fuerza bruta ni un detector automático de
-verdad. Su función es organizar evidencia pública, separar capas discursivas y
-producir mapas revisables para lectura humana.
+SIAN reúne evidencia pública en un corpus común con procedencias, versiones y revisiones. La versión de ejecución 3 separa la página, el coordinador, los lectores, la política de selección y el análisis. El contrato de registros permanece en versión 2. La especificación operativa completa está en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md).
 
-## Principios
+## Recorrido de la información
 
-1. **Local primero.** El análisis se calcula en la máquina del usuario.
-2. **Smart Data antes que Big Data.** Se prefieren muestras trazables,
-   balanceadas y auditables sobre volúmenes grandes pero sesgados.
-3. **Capas separadas.** Noticias, foros, instituciones y artículos científicos
-   se recolectan y evalúan por separado.
-4. **Muestreo reproducible.** La corrida secuencial usa una semilla para elegir
-   términos/rubros por mes y capa.
-5. **Interpretación humana.** Los algoritmos sugieren nodos, relaciones y
-   brechas; no sustituyen la lectura crítica.
+```mermaid
+flowchart TD
+    A[Configuración y capacidades] --> B[Plan persistente de tareas]
+    B --> C[Coordinador independiente]
+    C --> D[Índices semillas y archivos]
+    D --> E[Extracción y evidencia]
+    D --> F[Pausa o fallo registrado]
+    F --> B
+    E --> G[Registro transaccional]
+    G --> H[Fecha pertinencia y duplicados]
+    H --> I[Corpus y cobertura]
+    I --> J[Revisión y análisis]
+    G --> K[Respaldo recuperable]
+    K --> B
+```
 
-## Módulos
+## Responsabilidades
 
-| Módulo | Papel |
+| Subsistema | Archivos |
 |---|---|
-| `streamlit_app.py` | Interfaz local, configuración, corrida secuencial, visualizaciones y exportación. |
-| `news_spider.py` | Recolección pública, extracción permitida, limpieza inicial, clasificación de fuentes y guardado incremental. |
-| `source_profiles.py` | Catálogo auditable de medios, foros, blogs, instituciones y perfiles de limpieza. |
-| `narrative_analysis.py` | Análisis local: n-gramas, eventos narrativos, grafos, cubridor, Louvain y métodos de optimización. |
-| `structural_narrative.py` | Disección estructural: proposiciones, actos de habla, marcos, ecos, deltas, silencios y trazabilidad técnica. |
-| `reclean_outputs.py` | Reprocesamiento local de textos ya recolectados. |
-| `scripts/` | Utilidades reproducibles de extracción y solución. |
-| `publication/` | TeX, PDF, DOCX y scripts de documentos publicables. |
-| `.agents/` | Memoria crítica de agentes: criterios de revisión computacional, humanística y editorial. |
+| Configuración y visualización | `streamlit_app.py` |
+| Capacidades y planificación histórica | `historical_sources.py` |
+| Ejecución independiente y tareas | `collection_jobs.py`, `collection_runner.py`, `process_lock.py` |
+| Lectores y control de fuentes | `news_spider.py`, `source_adapters.py`, `source_control.py`, `source_profiles.py` |
+| Selección operativa y cobertura | `collection_policy.py` |
+| Identidad evidencia y versiones | `corpus_contract.py`, `record_schema.py`, `evidence_model.py` |
+| Guardado importación y respaldo | `corpus_storage.py`, `web_corpus_io.py`, `job_backup.py` |
+| Corpus guardados y revisión | `corpus_pipeline.py`, `reclean_outputs.py` |
+| Modelos descriptivos y estructura narrativa | `narrative_analysis.py`, `structural_narrative.py` |
+| Comandos reproducibles | `scripts/collect_historical.py`, demás utilidades de corpus |
 
-## Flujo de recolección
+## Invariantes
 
-```text
-tópico
-  → rubros y variantes
-  → año
-  → mes
-  → capa de fuente
-  → muestra aleatoria reproducible de términos
-  → consulta pública corta
-  → extracción permitida por robots/HTML visible
-  → limpieza
-  → clasificación de fuente
-  → JSON incremental
-```
+La cuota es total anual, compartida entre capas. Cada identidad cuenta como un documento; copias exactas entre URLs se conservan pero no duplican la cuota. El año solicitado y la fecha de detección nunca sustituyen publicación. Los faltantes y conflictos permanecen. El texto parcial no se presenta como texto completo. Las etiquetas de rubro pueden superponerse y requieren revisión para inferencias sociales.
 
-La unidad de búsqueda es un término por consulta. No se concatenan todos los
-sinónimos porque eso satura índices, genera 429 y vuelve opaco qué término
-recuperó cada documento.
+La página no posee el trabajador: recargarla conserva la ejecución en el mismo servidor. El bloqueo del proceso evita dos trabajadores por base. Los registros se confirman individualmente, los archivos se reemplazan atómicamente y el ZIP contiene una copia consistente de SQLite. Los estados de pausa, interrupción, fuentes pendientes, cuota alcanzada y final con brechas se distinguen explícitamente.
 
-## Ejecución recuperable
+## Persistencia y publicación
 
-La interfaz genera `run_manifest.json` y, en corridas secuenciales,
-`query_plan.json`. El archivo `scripts/run_query_plan.py` permite repetir ese
-plan sin Streamlit:
+El disco predeterminado sigue siendo local. Un volumen configurado mediante `SIAN_DATA_DIR`, un respaldo privado S3 opcional o un ZIP conservado por la persona permiten recuperación después de perder el servidor. La app no aprovisiona infraestructura ni guarda datos automáticamente en la computadora del usuario.
 
-```text
-query_plan.json → scripts/run_query_plan.py → corpus fusionado + manifiesto replay
-```
+GitHub contiene código, semillas curadas y documentación. Corpus descargados, cachés, bases de ejecución y credenciales quedan excluidos. Actualizar GitHub no produce nuevos datos ni acredita que se haya alcanzado una cuota. Los informes históricos conservan su fecha y límites.
 
-Esto separa diseño interactivo y ejecución reproducible. La app sigue siendo el
-laboratorio de configuración; el script permite repetir o auditar la corrida de
-forma local.
-
-## Capas de fuente
-
-| Capa | Qué intenta captar | Riesgo |
-|---|---|---|
-| Noticias | Agenda pública mediada por prensa. | Sesgo editorial, sindicación, notas repetidas. |
-| Foros/blogs/comunidades | Lenguaje situado y experiencia pública indexable. | Cobertura incompleta; Reddit bloquea; no representa toda la sociedad. |
-| Instituciones | Normas, alertas, reportes y política pública. | Voz formal, no conversación social. |
-| Artículos científicos | Estabilización académica/técnica. | Puede dominar el corpus si no se separa por capa. |
-
-## Agentes locales
-
-Los archivos en `.agents/` no son procesos autónomos. Son memoria crítica local:
-
-- `roman_mora_cognitive_agent.md`: exige coherencia, límites, trazabilidad y
-  claridad para públicos no computacionales.
-- `sinergia_narrativas_humanidades.md`: define narrativa como estructura
-  situada de sentido y obliga a separar capas discursivas.
-- `legal_ethics_agent.md`: revisa fuentes públicas, límites OSINT,
-  trazabilidad técnica y riesgos de publicación.
-- `computational_architecture_agent.md`: revisa ejecución local,
-  reproducibilidad, manifiestos, planes y acoplamiento de módulos.
-- `logical_consistency_agent.md`: revisa coherencia formal entre modelo,
-  objetivos, restricciones, métricas y visualizaciones.
-
-Estos agentes se aplican como criterios de revisión documental y de diseño. Si
-una regla del usuario cambia la validez del sistema, debe actualizarse ahí.
-
-## Publicación en GitHub
-
-Debe versionarse:
-
-- código fuente;
-- documentación;
-- agentes;
-- semillas públicas;
-- documentos publicables.
-
-Debe ignorarse:
-
-- bases descargadas completas;
-- salidas experimentales grandes;
-- cachés;
-- credenciales;
-- datos privados o no autorizados.
-
-
-## Actualización de evidencia: 6 de octubre de 2026
-
-La disponibilidad de autor, fecha, fuente, actores o postura no se garantiza.
-Cada campo conserva valor, evidencia, método y estado; los faltantes no son cero.
-La publicación se separa de actualización, consulta y año de búsqueda.
-Cada análisis informa su subconjunto utilizable y cobertura. Los resultados
-heurísticos son candidatos; las afirmaciones y relaciones revisadas requieren
-fragmentos de respaldo. Un enlace PDF no equivale a texto completo recuperado.
-
-La especificación vigente, modelos descriptivos y pseudocódigos están en
-[EVIDENCIA_Y_MODELOS.md](EVIDENCIA_Y_MODELOS.md). Esta política prevalece sobre
-supuestos de completitud de versiones anteriores. Los documentos históricos
-conservan sus límites y no se recalculan por actualizar el software.
-
-
-## Arquitectura y registros v2 (6 de octubre de 2026)
-
-El contrato versionado separa documento, versión y recuperación. Las etapas tienen
-puntos de control íntegros y reanudación; los lectores públicos usan caché y
-reintentos limitados. La selección revisada requiere motivo, evidencia y revisor,
-y los cambios invalidan revisiones dependientes. Las escrituras de corpus y
-manifiestos son atómicas y el registro SQLite es transaccional.
-
-El ejecutor de corpus guardados organiza evidencia existente; no simula nuevas
-descargas ni revisión humana. Títulos, resúmenes y fragmentos se distinguen, y la
-cobertura de búsqueda requiere un denominador independiente. La especificación,
-pseudocódigo y comandos están en `ARQUITECTURA_REGISTROS_V2.md`.
+Los archivos de criterios de revisión del proyecto son documentación, no trabajadores autónomos. La interpretación de actores, posturas, relaciones y causalidad sigue requiriendo lectura humana y respaldo literal, conforme a [EVIDENCIA_Y_MODELOS.md](EVIDENCIA_Y_MODELOS.md).

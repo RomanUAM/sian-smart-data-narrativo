@@ -1,24 +1,16 @@
-# SIAN - Smart Data Narrativo
+# Ejecutar y recuperar SIAN
 
-Paquete local para construir y analizar corpus narrativos desde fuentes públicas:
-noticias, artículos científicos abiertos, fuentes institucionales, blogs, foros y
-otros documentos web.
+SIAN necesita Python 3.10 o superior e internet para consultar fuentes públicas. El análisis de corpus ya guardados no requiere nuevas descargas. La cuota es total anual entre fuentes y la operación vigente está en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md).
 
-## Requisitos
+## Instalar
 
-- Python 3.10 o superior.
-- Conexión a internet para recolectar datos públicos.
-- En macOS/Linux se recomienda crear un entorno virtual.
-
-## Instalación
-
-Desde la carpeta del proyecto:
+Desde la raíz del repositorio, en macOS o Linux:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install --upgrade pip
-python3 -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
 ```
 
 En Windows:
@@ -26,68 +18,35 @@ En Windows:
 ```powershell
 py -m venv .venv
 .venv\Scripts\activate
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
 ```
 
-## Ejecutar la app
+Abrir la dirección que muestra Streamlit, normalmente http://localhost:8501 .
+
+## Recolección y guardado
+
+Configurar tema, región, años y meta total anual. Para el caso de tatuaje, usar 2016 al presente, todos los rubros y la acción de corrida histórica con todas las capas. Descargar **Descargar ejecución completa ZIP** y conservar el código privado. La base guarda cada registro en SQLite; los JSON y la cobertura se exportan después de las tareas y al solicitar el respaldo.
+
+El código recupera una ejecución en el mismo disco. Para restaurar después de perderlo, importar el ZIP y reanudar. El ZIP nuevo conserva estado, documentos y plan; los respaldos anteriores con manifiesto se migran al nuevo plan. Cerrar la página no detiene el proceso. El botón **Parar araña** solicita una pausa después de terminar la operación actual.
+
+## Terminal
 
 ```bash
-streamlit run streamlit_app.py --server.port 8502 --server.fileWatcherType none
+python scripts/collect_historical.py --config examples/tatuaje_2016_actualidad.json --plan-only
+python scripts/collect_historical.py --resume CODIGO_DE_EJECUCION
+python scripts/collect_historical.py --resume CODIGO_DE_EJECUCION --plan-only --export respaldo.zip
+python scripts/collect_historical.py --restore respaldo.zip --plan-only
 ```
 
-Luego abrir:
+Eliminar `--plan-only` inicia la recolección. La restauración genera un código nuevo. Las tareas completadas se omiten, las fallidas o diferidas se vuelven a intentar y la identidad evita contar otra vez el mismo documento.
 
-```text
-http://localhost:8502
-```
+## Servidor y persistencia
 
-En macOS también puedes abrir:
+Configurar `SIAN_DATA_DIR` sobre un volumen persistente. Como alternativa adicional, `SIAN_BACKUP_BUCKET`, `SIAN_BACKUP_PREFIX` y credenciales AWS en el entorno activan el respaldo privado S3. Nunca escribir credenciales en GitHub. Sin almacenamiento externo, conservar el ZIP para restaurar tras perder el servidor. La página muestra si el respaldo externo está configurado y si la última copia falló.
 
-```bash
-scripts/start_sian_terminal.command
-```
+## Si no aparecen documentos
 
-## Notas importantes
+Consultar el estado, el avance y `coverage.json`. `waiting_sources` indica tareas fallidas o diferidas; `finished_with_gaps` indica que las tareas disponibles terminaron sin alcanzar la cuota. Los registros sin publicación verificable, cortos, fuera del periodo o duplicados se conservan con motivos. Un archivo de control guardado no significa que se hayan recuperado documentos.
 
-- Para bases grandes, no cierres la terminal donde corre Streamlit.
-- La recolección usa fuentes públicas y puede encontrar límites de tasa.
-- No se garantiza un mínimo de documentos por fuente si no existen o si no son
-  legalmente accesibles; el sistema debe reportar brechas de cobertura.
-- Los JSON generados deben guardarse fuera del ZIP si se van a mover bases muy
-  grandes.
-
-## Documentos incluidos
-
-Los documentos metodológicos están en `publication/`:
-
-- `sian_metodologia_narrativa_es.pdf`
-- `modelo_multiobjetivo_cubridor_narrativo.pdf`
-- `sian_narrative_method_en.pdf`
-
-
-
-## Actualización de evidencia: 6 de octubre de 2026
-
-La disponibilidad de autor, fecha, fuente, actores o postura no se garantiza.
-Cada campo conserva valor, evidencia, método y estado; los faltantes no son cero.
-La publicación se separa de actualización, consulta y año de búsqueda.
-Cada análisis informa su subconjunto utilizable y cobertura. Los resultados
-heurísticos son candidatos; las afirmaciones y relaciones revisadas requieren
-fragmentos de respaldo. Un enlace PDF no equivale a texto completo recuperado.
-
-La especificación vigente, modelos descriptivos y pseudocódigos están en
-[EVIDENCIA_Y_MODELOS.md](EVIDENCIA_Y_MODELOS.md). Esta política prevalece sobre
-supuestos de completitud de versiones anteriores. Los documentos históricos
-conservan sus límites y no se recalculan por actualizar el software.
-
-## Archivos en la versión web
-La recolección guarda JSON en el servidor de Streamlit, no en la computadora del usuario.
-Cada sesión web nueva tiene una carpeta propia; el almacenamiento del servidor es temporal.
-En **Archivos y respaldo** se puede descargar un ZIP de los JSON/JSONL/CSV disponibles,
-incluso los registros parciales de una corrida y el manifiesto si no hubo resultados.
-No cierre la sesión sin descargar el respaldo. Un archivo de control no implica documentos recuperados.
-Para recuperar un corpus descargado, use **Importar corpus desde tu computadora** y
-**Cargar archivos importados**. Se pueden cargar varios JSON/JSONL y fusionarlos.
-Las corridas secuenciales guardan un consolidado tras cada paso completado.
-No se garantiza recuperar archivos de una sesión antigua ni después de reiniciar el servidor.
+Agregar fuentes históricas o sitemaps pertinentes cuando RSS no cubra años antiguos. GDELT DOC no se consulta para 2016 y las fechas `lastmod` de los sitemaps no cuentan como publicación. Reanudar después de una pausa del proveedor permite intentar tareas pendientes sin reiniciar toda la búsqueda.

@@ -1,5 +1,7 @@
 # SIAN: arquitectura de corpus y registros v2
 
+La ejecución histórica versión 3 está implementada en el coordinador independiente y documentada en [RECOLECCION_HISTORICA.md](RECOLECCION_HISTORICA.md). Mantiene el contrato de evidencia v2, añade tareas transaccionales, cuota total anual, control compartido de límites, archivo recuperable y cobertura por motivos. Esta especificación sustituye la ejecución ligada a una sesión y las cuotas automáticas por tipo; no convierte los informes históricos en nuevas mediciones.
+
 Actualización del 6 de octubre de 2026. Implementación posterior a la auditoría integral, con migración conservadora del piloto de tatuaje México 2016–2026.
 
 ## Qué cambia

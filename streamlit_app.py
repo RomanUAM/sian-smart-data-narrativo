@@ -127,85 +127,8 @@ def deduplicate_rows_for_analysis(rows: list[dict]) -> tuple[list[dict], list[di
     return list(kept.values()), duplicates
 
 
-def save_run_manifest(config: dict) -> None:
-    """Persist reproducibility metadata before the worker starts."""
-    output_dir = Path(config.get("output_dir") or "news_output")
-    output_dir.mkdir(parents=True, exist_ok=True)
-    query_plan = list(config.get("run_plan") or [])
-    manifest_config = {key: value for key, value in config.items() if key != "run_plan"}
-    manifest = {
-        "system": "SIAN",
-        "manifest_version": 1,
-        "created_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-        "execution": "local_streamlit",
-        "analysis_policy": "heuristic_local_no_external_llm",
-        "query_plan_steps": len(query_plan),
-        "query_plan_hash": stable_json_hash(query_plan) if query_plan else "",
-        "config_hash": stable_json_hash(manifest_config),
-        "config": manifest_config,
-        "notes": [
-            "Los textos no se envían a modelos externos.",
-            "La corrida secuencial usa muestreo reproducible por semilla.",
-            "Reddit RSS es opcional y no debe ser fuente principal de conversación social.",
-            "Las salidas heurísticas requieren validación humana.",
-        ],
-    }
-    atomic_write(output_dir / 'run_manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
-    if query_plan:
-        atomic_write(output_dir / 'query_plan.json', json.dumps(query_plan, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
-
-
-def update_run_manifest(config: dict, status: str, rows: list[dict] | None = None, error: str = "") -> None:
-    """Update manifest at the end of a local run for reproducibility/audit."""
-    output_dir = Path(config.get("output_dir") or "news_output")
-    manifest_path = output_dir / "run_manifest.json"
-    if manifest_path.exists():
-        try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except Exception:
-            manifest = {}
-    else:
-        manifest = {"system": "SIAN", "manifest_version": 1}
-    rows = rows or []
-    manifest.update(
-        {
-            "finished_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "status": status,
-            "records_total": len(rows),
-            "records_usable": sum(1 for row in rows if has_usable_text(row)),
-            "records_by_source_type": dict(Counter(str(row.get("source_type") or "unknown") for row in rows)),
-            "records_by_status": dict(Counter(str(row.get("status") or "unknown") for row in rows)),
-            "records_hash": stable_json_hash(rows) if rows else "",
-            "error": error,
-        }
-    )
-    output_dir.mkdir(parents=True, exist_ok=True)
-    atomic_write(manifest_path, json.dumps(manifest, ensure_ascii=False, indent=2, default=json_default), encoding='utf-8')
-
-
-def is_safe_clear_target(path_value: str) -> tuple[bool, Path, str]:
-    target = Path(path_value or "news_output").expanduser()
-    try:
-        resolved = target.resolve()
-        app_resolved = APP_ROOT.resolve()
-        cwd_resolved = Path.cwd().resolve()
-    except Exception as exc:
-        return False, target, f"Ruta inválida: {exc}"
-    allowed_roots = [app_resolved, cwd_resolved]
-    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
-        return False, resolved, "Por seguridad sólo se limpian carpetas dentro del proyecto local."
-    if resolved.name not in {"news_output", "news_output_recleaned", "solver_output"} and "news_output" not in resolved.parts:
-        return False, resolved, "La carpeta debe llamarse news_output, news_output_recleaned, solver_output o estar dentro de news_output."
-    if resolved in {Path.home().resolve(), app_resolved, cwd_resolved, Path("/")}:
-        return False, resolved, "No se permite limpiar una raíz de trabajo."
-    return True, resolved, ""
-
-
 def init_state() -> None:
     defaults = {
-        "spider_thread": None,
-        "spider_stop": None,
-        "spider_queue": None,
         "spider_running": False,
         "spider_logs": [],
         "spider_rows": [],
@@ -220,185 +143,46 @@ def init_state() -> None:
 
 
 def drain_queue() -> None:
-    q = st.session_state.get("spider_queue")
-    if q is None:
-        return
-    while True:
-        try:
-            kind, payload = q.get_nowait()
-        except queue.Empty:
-            break
-        if kind == "progress":
-            st.session_state.spider_logs.append(str(payload))
-        elif kind == "done":
-            st.session_state.spider_rows = payload
-            st.session_state.spider_running = False
-            st.session_state.loaded_path = st.session_state.spider_config.get("output_dir", "news_output")
-            st.session_state.spider_logs.append(f"Finalizado: {len(payload)} registros. Revisa Archivos y respaldo.")
-        elif kind == "error":
-            st.session_state.spider_error = str(payload)
-            st.session_state.spider_running = False
-            st.session_state.spider_logs.append(f"ERROR: {payload}")
+    from collection_jobs import open_job
+    token=st.session_state.get('collection_job') or st.query_params.get('job')
+    if not token:return
+    try:
+        job=open_job(str(token))
+        st.session_state.collection_job=str(token)
+        st.session_state.spider_running=job.active()
+        st.session_state.spider_config=job.get('config')
+        st.session_state.spider_logs=job.logs()
+        st.session_state.spider_rows=job.rows()
+        st.session_state.web_output_dir=str(job.root)
+        st.session_state.loaded_path=str(job.root)
+        st.session_state.spider_error=''
+    except Exception as exc:
+        st.session_state.spider_error=str(exc)
 
 
 def start_worker(config: dict) -> None:
-    save_run_manifest(config)
-    stop_event = threading.Event()
-    q: queue.Queue = queue.Queue()
-
-    def progress(message: str) -> None:
-        q.put(("progress", message))
-
-    def worker() -> None:
-        try:
-            if config.get("run_plan"):
-                all_rows: list[dict] = []
-                sequential_counts: Counter = Counter()
-                total_steps = len(config["run_plan"])
-                for index, step_config in enumerate(config["run_plan"], start=1):
-                    if stop_event.is_set():
-                        progress("Stop requested before next planned run.")
-                        break
-                    target_type = str(step_config.get("target_source_type") or "")
-                    target_year = int(step_config.get("start_year") or 0)
-                    cap = int(step_config.get("max_records_per_source_type_year") or 0)
-                    minimum = int(step_config.get("target_min_per_source_type_year") or 0)
-                    if target_type and cap and sequential_counts[(target_year, target_type)] >= cap:
-                        progress(
-                            f"Sequential skip {index}/{total_steps}: quota reached "
-                            f"{target_year} · {target_type} · "
-                            f"{sequential_counts[(target_year, target_type)]}/min {minimum if minimum else 0} · max {cap}"
-                        )
-                        continue
-                    progress(
-                        f"Sequential run {index}/{total_steps}: "
-                        f"{step_config.get('variant_rubric', 'general')} · "
-                        f"{step_config.get('variant_term', step_config.get('query', ''))} · "
-                        f"{step_config.get('source_collection', 'mixed')} · "
-                        f"{step_config.get('period_label', step_config.get('start_year'))} · "
-                        f"{sequential_counts[(target_year, target_type)]}/min {minimum if minimum else 0} · "
-                        f"max {cap if cap else '∞'}"
-                    )
-                    records = crawl_news(
-                        query=step_config["query"],
-                        start_year=step_config["start_year"],
-                        end_year=step_config["end_year"],
-                        start_month=step_config.get("start_month"),
-                        end_month=step_config.get("end_month"),
-                        domains=step_config["domains"],
-                        query_variants=step_config["query_variants"],
-                        geographic_scope=step_config["geographic_scope"],
-                        geographic_terms=step_config["geographic_terms"],
-                        exclude_terms=step_config["exclude_terms"],
-                        exclude_domains=step_config["exclude_domains"],
-                        source_modes=step_config["source_modes"],
-                        output_dir=Path(step_config["output_dir"]),
-                        max_records_per_month=step_config["max_records_per_month"],
-                        max_records_per_source_type_year=step_config["max_records_per_source_type_year"],
-                        target_min_per_source_type_year=step_config.get("target_min_per_source_type_year", 0),
-                        required_source_types=step_config.get("required_source_types", []),
-                        accept_source_types=step_config.get("accept_source_types", []),
-                        seed_url_file=step_config.get("seed_url_file") or None,
-                        download_pdfs=step_config.get("download_pdfs", False),
-                        strict_open_access_articles=step_config.get("strict_open_access_articles", True),
-                        search_delay_seconds=step_config["search_delay_seconds"],
-                        delay_seconds=step_config["delay_seconds"],
-                        min_text_chars=step_config["min_text_chars"],
-                        progress=progress,
-                        stop_requested=stop_event.is_set,
-                    )
-                    for record in records:
-                        row = normalize_record(asdict(record))
-                        row["variant_rubric"] = step_config.get("variant_rubric", "")
-                        row["variant_term"] = step_config.get("variant_term", "")
-                        row["variant_term_index"] = step_config.get("variant_term_index", "")
-                        row["source_collection"] = step_config.get("source_collection", "")
-                        row["search_role"] = step_config.get("search_role", "")
-                        narrative_rubrics, narrative_terms = classify_row_with_rubrics(
-                            row,
-                            step_config.get("classification_rubrics") or config.get("classification_rubrics") or {},
-                        )
-                        row["narrative_rubrics"] = ", ".join(narrative_rubrics)
-                        row["narrative_rubric_terms"] = ", ".join(narrative_terms)
-                        all_rows.append(row)
-                        if has_usable_text(row):
-                            sequential_counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
-                    save_collected_rows(config["output_dir"], contract_merge_rows(all_rows), sequential=True)
-                    progress(
-                        f"Finished sequential run {index}/{total_steps}: "
-                        f"{step_config.get('variant_rubric', 'general')} · "
-                        f"{step_config.get('variant_term', step_config.get('query', ''))} · "
-                        f"{step_config.get('source_collection', 'mixed')} · "
-                        f"{step_config.get('period_label', step_config.get('start_year'))} · {len(records)} records"
-                    )
-                output_dir = Path(config["output_dir"])
-                output_dir.mkdir(parents=True, exist_ok=True)
-                merged_rows = contract_merge_rows(all_rows)
-                atomic_write(output_dir / 'news_records_sequential_merged.json', json.dumps(merged_rows, ensure_ascii=False, indent=2), encoding='utf-8')
-                atomic_write(output_dir / 'news_records_sequential_merged.jsonl', '\n'.join((json.dumps(row, ensure_ascii=False) for row in merged_rows)) + ('\n' if merged_rows else ''), encoding='utf-8')
-                update_run_manifest(config, "finished", merged_rows)
-                q.put(("done", merged_rows))
-            else:
-                records = crawl_news(
-                    query=config["query"],
-                    start_year=config["start_year"],
-                    end_year=config["end_year"],
-                    domains=config["domains"],
-                    query_variants=config["query_variants"],
-                    geographic_scope=config["geographic_scope"],
-                    geographic_terms=config["geographic_terms"],
-                    exclude_terms=config["exclude_terms"],
-                    exclude_domains=config["exclude_domains"],
-                    source_modes=config["source_modes"],
-                    output_dir=Path(config["output_dir"]),
-                    max_records_per_month=config["max_records_per_month"],
-                    max_records_per_source_type_year=config["max_records_per_source_type_year"],
-                    target_min_per_source_type_year=config.get("target_min_per_source_type_year", 0),
-                    required_source_types=config.get("required_source_types", []),
-                    accept_source_types=config.get("accept_source_types", []),
-                    seed_url_file=config.get("seed_url_file") or None,
-                    download_pdfs=config.get("download_pdfs", False),
-                    strict_open_access_articles=config.get("strict_open_access_articles", True),
-                    search_delay_seconds=config["search_delay_seconds"],
-                    delay_seconds=config["delay_seconds"],
-                    min_text_chars=config["min_text_chars"],
-                    progress=progress,
-                    stop_requested=stop_event.is_set,
-                )
-                rows = []
-                for record in records:
-                    row = normalize_record(asdict(record))
-                    narrative_rubrics, narrative_terms = classify_row_with_rubrics(
-                        row,
-                        config.get("classification_rubrics") or {},
-                    )
-                    row["narrative_rubrics"] = ", ".join(narrative_rubrics)
-                    row["narrative_rubric_terms"] = ", ".join(narrative_terms)
-                    rows.append(row)
-                save_collected_rows(config["output_dir"], rows)
-                update_run_manifest(config, "finished", rows)
-                q.put(("done", rows))
-        except Exception as exc:  # noqa: BLE001
-            update_run_manifest(config, "error", [], str(exc))
-            q.put(("error", str(exc)))
-
-    thread = threading.Thread(target=worker, daemon=True)
-    st.session_state.spider_thread = thread
-    st.session_state.spider_stop = stop_event
-    st.session_state.spider_queue = q
-    st.session_state.spider_running = True
-    st.session_state.spider_logs = ["Starting spider..."]
-    st.session_state.spider_rows = []
-    st.session_state.spider_error = ""
-    st.session_state.spider_config = dict(config)
-    thread.start()
+    from collection_jobs import Job, job_base
+    from historical_sources import plan
+    # One coordinator serves sequential, individual-source and mixed UI actions.
+    config=dict(config)
+    config.pop('run_plan',None)
+    config['topic_terms']=config.get('topic_terms') or [config['query']]
+    job=Job.create(job_base(),config,plan(config))
+    st.session_state.collection_job=job.root.name
+    st.query_params['job']=job.root.name
+    st.session_state.spider_config=job.get('config')
+    st.session_state.web_output_dir=str(job.root)
+    st.session_state.spider_logs=[]
+    st.session_state.spider_rows=[]
+    st.session_state.spider_error=''
+    st.session_state.spider_running=True
+    job.launch()
 
 
 def request_stop() -> None:
-    stop_event = st.session_state.get("spider_stop")
-    if stop_event is not None:
-        stop_event.set()
-        st.session_state.spider_logs.append("Stop requested. Waiting for the current network call to finish...")
+    from collection_jobs import open_job
+    token=st.session_state.get('collection_job')
+    if token:open_job(token).pause()
 
 
 def load_saved_rows(path: str) -> list[dict]:
@@ -1444,7 +1228,7 @@ def render_results(rows: list[dict]) -> None:
         st.warning("El corpus tiene capas sociales incompletas: faltan noticias o foros/conversaciones orgánicas.")
     config = st.session_state.get("spider_config", {})
     max_per_type = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
-    target_min_per_type = int(config.get("target_min_per_source_type_year", 1) or 0)
+    target_min_per_type = int(config.get("target_min_per_source_type_year", 0) or 0)
     coverage_rows = annual_news_coverage_rows(rows, max_per_type)
     if coverage_rows:
         st.subheader("Cobertura anual de noticias")
@@ -1672,11 +1456,15 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
     if st.button("Cargar archivos importados", disabled=not uploads or st.session_state.spider_running):
         try:
             imported = contract_merge_rows([row for upload in uploads for row in parse_corpus_upload(upload.getvalue(), upload.name)])
-            destination = Path(default_output_dir) / "imports" / "news_records.json"
-            atomic_write(destination, json.dumps(imported, ensure_ascii=False, indent=2), encoding="utf-8")
-            st.session_state.spider_rows = imported
-            st.session_state.loaded_path = str(destination)
-            st.success(f"Importados {len(imported)} registros. Puedes descargar un respaldo.")
+            from collection_jobs import Job,job_base
+            imported_job=Job.create(job_base(),dict(config),[])
+            for row in imported:imported_job.ingest(row)
+            _,report=imported_job.export()
+            imported_job.set('status','target_met' if report['target_met'] else 'finished_with_gaps')
+            imported_job.export()
+            st.session_state.collection_job=imported_job.root.name
+            st.query_params['job']=imported_job.root.name
+            drain_queue();st.rerun()
         except (ValueError, UnicodeError, OSError) as exc:
             st.error(f"No se importó el corpus: {exc}")
 
@@ -1777,7 +1565,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
 
     config = st.session_state.get("spider_config", {})
     max_per_type = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
-    target_min_per_type = int(config.get("target_min_per_source_type_year", 1) or 0)
+    target_min_per_type = int(config.get("target_min_per_source_type_year", 0) or 0)
     coverage_rows = annual_news_coverage_rows(rows, max_per_type)
     if coverage_rows:
         with st.expander("Auditoría de cobertura anual de noticias", expanded=True):
@@ -5483,7 +5271,7 @@ with st.sidebar:
         help=(
             "Formato: rubro: término, término. "
             "No metas conectores como variantes. Mejor 'tatuaje empleo' que 'tatuaje y empleo'. "
-            "La corrida secuencial usa cada rubro por separado y luego fusiona."
+            "Los términos guían la búsqueda y los rubros se etiquetan en el texto recuperado."
         ),
         disabled=st.session_state.spider_running,
     )
@@ -5492,7 +5280,7 @@ with st.sidebar:
         "Rubros que se van a correr",
         options=list(sidebar_variant_rubrics),
         default=list(sidebar_variant_rubrics),
-        help="Para un corpus publicable conviene correr rubros separados, no todos mezclados.",
+        help="Las etiquetas pueden superponerse; seleccionar todos los rubros no multiplica la cuota anual.",
         disabled=st.session_state.spider_running,
     )
     geographic_choice = st.selectbox(
@@ -5508,7 +5296,7 @@ with st.sidebar:
         help="Se agregan con OR para limitar el marco empírico. Déjalo vacío para mundo/global.",
         disabled=st.session_state.spider_running,
     )
-    start_year = st.number_input("Año inicial", min_value=1979, max_value=2100, value=2020, step=1, disabled=st.session_state.spider_running)
+    start_year = st.number_input("Año inicial", min_value=1979, max_value=2100, value=2016, step=1, disabled=st.session_state.spider_running)
     end_year = st.number_input("Año final", min_value=1979, max_value=2100, value=2026, step=1, disabled=st.session_state.spider_running)
     source_preset_choices = st.multiselect(
         "Fuentes básicas automáticas",
@@ -5633,42 +5421,6 @@ with st.sidebar:
         help="No es la meta muestral. Es la profundidad de búsqueda por mes/motor antes de filtros, duplicados y errores.",
         disabled=st.session_state.spider_running,
     )
-    max_records_per_type_year = st.slider(
-        "Máximo anual por tipo de fuente",
-        min_value=10,
-        max_value=500,
-        value=100,
-        step=10,
-        help="Balancea el corpus: como máximo N registros por año para cada tipo discursivo: noticias, foros, artículos, reportes u otros.",
-        disabled=st.session_state.spider_running,
-    )
-    target_min_per_type_year = st.slider(
-        "Mínimo deseado por año y tipo de fuente",
-        min_value=0,
-        max_value=100,
-        value=1,
-        step=1,
-        help="Audita representación mínima de cada tipo discursivo. Usa 1 para exigir al menos algo de cada tipo; usa 100 si quieres aspirar a 100 de cada tipo/año.",
-        disabled=st.session_state.spider_running,
-    )
-    min_news_per_year = st.slider(
-        "Mínimo obligatorio de noticias por año",
-        min_value=0,
-        max_value=200,
-        value=50,
-        step=5,
-        help="Cuando corras la capa Noticias, sólo se aceptan registros clasificados como news y se reporta brecha si no llega a este mínimo.",
-        disabled=st.session_state.spider_running,
-    )
-    min_forums_per_year = st.slider(
-        "Mínimo obligatorio de foros/conversaciones por año",
-        min_value=0,
-        max_value=200,
-        value=50,
-        step=5,
-        help="Cuando corras la capa Foros, sólo se aceptan registros clasificados como forum. Reddit RSS registra publicaciones públicas, no comentarios privados.",
-        disabled=st.session_state.spider_running,
-    )
     search_delay = st.slider(
         "Pausa entre búsquedas mensuales, segundos",
         min_value=0.0,
@@ -5697,11 +5449,13 @@ with st.sidebar:
         ),
         disabled=st.session_state.spider_running,
     )
+    target_total_per_year = st.number_input("Meta total de documentos únicos por año", min_value=1, max_value=100000, value=200, disabled=st.session_state.spider_running)
+    historical_sitemaps = st.text_area("Sitemaps históricos de fuentes (una URL HTTPS por línea)", help="Las fechas de modificación no cuentan como fechas de publicación. La cobertura depende de cada sitio.", disabled=st.session_state.spider_running)
     hosted = Path("/mount/src").is_dir()
     if hosted and "web_output_dir" not in st.session_state:
         st.session_state.web_output_dir = str(Path(tempfile.mkdtemp(prefix="sian-")) / "news_output")
     output_dir = st.text_input("Carpeta de salida", value=st.session_state.get("web_output_dir", "news_output"), disabled=st.session_state.spider_running or hosted)
-    st.caption("En la web los archivos se guardan temporalmente en el servidor. Descarga el respaldo antes de cerrar; no se guardan automáticamente en tu computadora.")
+    st.caption("La ejecución continúa al recargar la página. Sin un volumen persistente, un reinicio del servidor requiere restaurar el ZIP completo.")
     default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
     default_forum_seed_path = APP_ROOT / "seed_sources" / "tatuaje_public_conversation_seed_urls.json"
     default_institutional_seed_path = APP_ROOT / "seed_sources" / "tatuaje_institutional_seed_urls.json"
@@ -5789,6 +5543,9 @@ if clear_output:
         st.error(clear_reason)
     elif target.exists() and target.is_dir():
         shutil.rmtree(target)
+        st.session_state.pop("collection_job",None)
+        st.query_params.pop("job",None)
+        st.session_state.pop("web_output_dir",None)
         st.session_state.spider_rows = []
         st.session_state.loaded_path = ""
         st.success(f"Bases eliminadas: {target}")
@@ -5862,13 +5619,6 @@ SOURCE_COLLECTION_ACCEPT_TYPES = {
     source_key: source_layer_accept_types(source_key)
     for source_key in ["news", "forums", "institutional", "articles", "reports_other"]
 }
-SOURCE_COLLECTION_MIN_TARGETS = {
-    "news": int(min_news_per_year),
-    "forums": int(min_forums_per_year),
-    "institutional": int(target_min_per_type_year),
-    "articles": int(target_min_per_type_year),
-    "reports_other": int(target_min_per_type_year),
-}
 sequential_source_layers = [
     SEQUENTIAL_SOURCE_LAYER_SPECS[label]
     for label in sequential_source_layer_labels
@@ -5916,18 +5666,10 @@ config = {
     "exclusion_preset": exclusion_preset,
     "periods_to_scan": (int(end_year) - int(start_year) + 1) * 12,
     "max_records_per_month": int(max_records),
-    "target_min_per_source_type_year": int(target_min_per_type_year),
-    "target_min_news_per_year": int(min_news_per_year),
-    "target_min_forums_per_year": int(min_forums_per_year),
-    "target_min_by_source_type": {
-        "news": int(min_news_per_year),
-        "forum": int(min_forums_per_year),
-        "institutional_report": int(target_min_per_type_year),
-        "scientific_article": int(target_min_per_type_year),
-        "industry_report": int(target_min_per_type_year),
-        "other": int(target_min_per_type_year),
-    },
-    "max_records_per_source_type_year": max(int(max_records_per_type_year), int(min_news_per_year), int(min_forums_per_year)),
+    "topic_terms": broad_collection_terms(query, selected_variant_rubrics, 2),
+    "target_total_per_year": int(target_total_per_year),
+    "historical_sitemaps": [u.strip() for u in historical_sitemaps.splitlines() if u.strip()],
+    "max_records_per_source_type_year": 0,
     "required_source_types": [],
     "accept_source_types": [],
     "seed_url_file": seed_url_file if use_seed_urls and seed_url_file else "",
@@ -5986,52 +5728,6 @@ with st.expander("Catálogo auditable de fuentes base"):
         "text/csv",
     )
 
-balanced_target_types = []
-if any(mode in source_modes for mode in {"gdelt_news", "google_news_rss"}):
-    balanced_target_types.append(("news", int(min_news_per_year)))
-if any(mode in source_modes for mode in {"forums", "reddit_rss"}):
-    balanced_target_types.append(("forum", int(min_forums_per_year)))
-if "institutional_gdelt" in source_modes:
-    balanced_target_types.append(("institutional_report", int(target_min_per_type_year)))
-if any(mode in source_modes for mode in {"openalex_oa", "crossref", "redalyc"}):
-    balanced_target_types.append(("scientific_article", int(target_min_per_type_year)))
-if balanced_target_types:
-    st.caption(
-        "Contadores visibles de balance para araña mezclada. "
-        "Muestran avance real contra el mínimo por año/tipo; `other` puede aparecer, pero no se usa como meta social."
-    )
-    current_balance_counts = Counter(
-        (int(row.get("year") or 0), row_source_type(row))
-        for row in st.session_state.get("spider_rows", [])
-        if has_usable_text(row) and str(row.get("year", "")).isdigit()
-    )
-    live_log_counts = live_balance_counts_from_logs(st.session_state.get("spider_logs", []))
-    for key, value in live_log_counts.items():
-        current_balance_counts[key] = max(current_balance_counts.get(key, 0), value)
-    balance_counter_rows = []
-    for year in range(int(start_year), int(end_year) + 1):
-        for source_type, minimum in balanced_target_types:
-            current_count = current_balance_counts.get((year, source_type), 0)
-            maximum_cap = int(config["max_records_per_source_type_year"])
-            balance_counter_rows.append(
-                {
-                    "year": year,
-                    "source_type": source_type,
-                    "counter": f"{current_count}/{minimum}",
-                    "actual_usable": current_count,
-                    "minimum_target": minimum,
-                    "gap_to_min": max(0, int(minimum) - current_count),
-                    "maximum_cap": maximum_cap,
-                    "cap_remaining": max(0, maximum_cap - current_count),
-                    "progress_to_min": round(current_count / max(1, int(minimum)), 3) if minimum else 1.0,
-                    "status": "ok" if current_count >= int(minimum) else "under_target",
-                }
-            )
-    st.dataframe(
-        balance_counter_rows,
-        use_container_width=True,
-        hide_index=True,
-    )
 if selected_variant_rubrics:
     st.caption("Rubros activos de variantes; se usan para clasificar la narrativa después de recolectar el corpus amplio.")
     st.dataframe(
@@ -6045,8 +5741,8 @@ if selected_variant_rubrics:
     st.caption(
         "Estrategia amplia primero: noticias, foros e instituciones se recolectan con términos núcleo; "
         "los rubros interpretativos se asignan después al texto recuperado. Artículos científicos pueden usar "
-        "variantes más específicas por año. Cuando se alcanza la cuota anual de un tipo de fuente, los pasos "
-        "restantes para ese año/tipo se saltan."
+        "variantes más específicas por año. La cuota es el total anual compartido entre fuentes. "
+        "Detenerse en esa cuota produce una muestra de disponibilidad, no una serie temporal representativa."
     )
 
 with st.expander("Diseño metodológico adaptable"):
@@ -6091,8 +5787,7 @@ indexables y deben reportarse como tales.
 
 st.subheader("Recolección por capa de fuente")
 st.caption(
-    "Elige una acción. Las corridas por capa crean bases separadas en `output_dir/by_source/<tipo>`; "
-    "después fusiona para crear un corpus combinado auditado."
+    "Cada acción crea una ejecución recuperable. La corrida con todas las capas conjuga las fuentes en una base común, con procedencia y clasificación de rubros."
 )
 action_options = [
     "1. Crear base de noticias",
@@ -6113,6 +5808,9 @@ selected_action = st.selectbox(
     ),
     disabled=st.session_state.spider_running,
 )
+merge_job_codes=''
+if selected_action=='6. Fusionar bases por fuente':
+    merge_job_codes=st.text_area('Códigos de ejecuciones para conjugar',help='Una ejecución por línea. Se preservan procedencias y conflictos; un mismo documento sólo cuenta una vez.')
 left, right = st.columns([1, 1])
 with left:
     execute_action = st.button("Ejecutar acción seleccionada", type="primary", disabled=st.session_state.spider_running)
@@ -6163,94 +5861,17 @@ if selected_source_run or run or run_sequential:
         if not sequential_source_layers:
             st.error("Selecciona al menos una capa de fuente para la corrida secuencial.")
             st.stop()
-        plan = []
-        broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
-        broad_term_steps = [
-            ("búsqueda_amplia", term_index, term, broad_terms)
-            for term_index, term in enumerate(broad_terms, start=1)
-        ]
-        article_term_steps = []
-        for rubric_name, rubric_terms in selected_variant_rubrics.items():
-            terms = merge_unique([query, *rubric_terms])[: int(sequential_synonym_limit)]
-            for term_index, term in enumerate(terms, start=1):
-                article_term_steps.append((rubric_name, term_index, term, terms))
-        monthly_term_budget = max(1, int(sequential_terms_per_month))
-        # Anchor queries remain comparable; thematic rubrics are exploratory.
-        anchor_terms = broad_terms[: min(2, monthly_term_budget)]
-        exploratory_terms = merge_unique([
-            *broad_terms[len(anchor_terms):],
-            *(term for _, _, term, _ in article_term_steps),
-        ])
-        step_lookup = {term: (rubric, idx, term, terms) for rubric, idx, term, terms in article_term_steps}
-        for rubric, idx, term, terms in broad_term_steps:
-            step_lookup.setdefault(term, (rubric, idx, term, terms))
-        for year in range(int(start_year), int(end_year) + 1):
-            for source_key, modes, download_pdfs in sequential_source_layers:
-                if source_key == "articles":
-                    periods_for_source = [(None, period_terms(
-                        anchor_terms, exploratory_terms, monthly_term_budget,
-                        int(sequential_seed), year if sequential_randomize else 0,
-                    ))]
-                else:
-                    periods_for_source = []
-                    for month in range(1, 13):
-                        periods_for_source.append((month, period_terms(
-                            anchor_terms, exploratory_terms, monthly_term_budget,
-                            int(sequential_seed), year * 12 + month if sequential_randomize else 0,
-                        )))
-                for month, selected_terms in periods_for_source:
-                    for term, search_role in selected_terms:
-                        rubric_name, term_index, _, rubric_terms = step_lookup.get(
-                            term, ("núcleo", 1, term, anchor_terms)
-                        )
-                        step = dict(config)
-                        step["start_year"] = int(year)
-                        step["end_year"] = int(year)
-                        step["start_month"] = int(month) if month else None
-                        step["end_month"] = int(month) if month else None
-                        step["query"] = term
-                        step["query_variants"] = []
-                        step["source_modes"] = modes
-                        step["download_pdfs"] = download_pdfs
-                        step["accept_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
-                        step["required_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
-                        step["target_min_per_source_type_year"] = SOURCE_COLLECTION_MIN_TARGETS.get(source_key, int(target_min_per_type_year))
-                        step["seed_url_file"] = config.get("seed_url_files_by_source", {}).get(source_key, "")
-                        step["variant_rubric"] = rubric_name
-                        step["variant_term"] = term
-                        step["search_role"] = search_role
-                        step["variant_term_index"] = term_index
-                        step["variant_rubric_terms"] = rubric_terms
-                        step["classification_rubrics"] = selected_variant_rubrics
-                        step["source_collection"] = source_key
-                        step["target_source_type"] = (SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, ["other"]) or ["other"])[0]
-                        # An annual cap would stop later months and fabricate a trend.
-                        step["max_records_per_source_type_year"] = 0
-                        period_label = f"{year}-{month:02d}" if month else str(year)
-                        step["period_label"] = period_label
-                        step["output_dir"] = str(Path(output_dir) / "by_rubric" / safe_key(rubric_name) / period_label / source_key / safe_key(term))
-                        if source_key == "forums":
-                            step["domains"] = merge_unique([
-                                *SOURCE_PRESETS.get("Foros / práctica profesional", []),
-                                *SOURCE_PRESETS.get("Foros sobre tatuajes", []),
-                            ])
-                        if source_key == "institutional":
-                            step["domains"] = merge_unique([
-                                *SOURCE_PRESETS.get("Gobierno México / instituciones públicas", []),
-                                *SOURCE_PRESETS.get("Gobierno global / organismos internacionales", []),
-                            ])
-                        plan.append(step)
-        run_config["run_plan"] = plan
-        run_config["output_dir"] = output_dir
-        st.info(
-            f"Corriendo plan secuencial amplio + clasificación: {len(plan)} pasos. "
-            f"Web pública usa términos núcleo ({', '.join(broad_terms)}) y clasifica rubros después. "
-            "Artículos científicos pueden usar variantes de rubro por año. "
-            "La consulta ancla se repite por periodo; las etiquetas exploratorias rotan con semilla. "
-            "No se aplica un tope anual que suprima meses posteriores."
-        )
+        from historical_sources import plan as historical_plan
+        run_config['classification_rubrics']=selected_variant_rubrics
+        run_config['sequential_source_layers']=config['sequential_source_layers']
+        for layer in run_config['sequential_source_layers']:
+            if layer['source_collection']=='forums':layer['domains']=merge_unique([*SOURCE_PRESETS.get('Foros / práctica profesional',[]),*SOURCE_PRESETS.get('Foros sobre tatuajes',[])])
+            elif layer['source_collection']=='institutional':layer['domains']=merge_unique([*SOURCE_PRESETS.get('Gobierno México / instituciones públicas',[]),*SOURCE_PRESETS.get('Gobierno global / organismos internacionales',[])])
+        tasks=historical_plan(run_config)
+        st.info(f"Plan histórico: {len(tasks)} tareas recuperables; meta total {target_total_per_year} documentos por año. Los rubros se clasifican después de recuperar el texto.")
     elif selected_source_run:
         source_key, modes, download_pdfs = selected_source_run
+        run_config["sequential_source_layers"] = [{"source_collection": source_key, "source_modes": modes, "download_pdfs": download_pdfs}]
         run_config["source_modes"] = modes
         run_config["download_pdfs"] = download_pdfs
         if source_key != "articles":
@@ -6260,8 +5881,9 @@ if selected_source_run or run or run_sequential:
             run_config["classification_rubrics"] = selected_variant_rubrics
         run_config["accept_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
         run_config["required_source_types"] = SOURCE_COLLECTION_ACCEPT_TYPES.get(source_key, [])
-        run_config["target_min_per_source_type_year"] = SOURCE_COLLECTION_MIN_TARGETS.get(source_key, int(target_min_per_type_year))
+        run_config["target_min_per_source_type_year"] = 0
         run_config["seed_url_file"] = config.get("seed_url_files_by_source", {}).get(source_key, "")
+        run_config["seed_url_files_by_source"] = {source_key: run_config["seed_url_file"]}
         run_config["output_dir"] = source_output_dir(output_dir, source_key)
         if source_key == "forums":
             run_config["domains"] = merge_unique([
@@ -6274,7 +5896,7 @@ if selected_source_run or run or run_sequential:
                 *SOURCE_PRESETS.get("Gobierno global / organismos internacionales", []),
             ])
         st.info(
-            f"Corriendo capa `{source_key}` en {run_config['output_dir']}. "
+            f"Corriendo capa `{source_key}` en una nueva ejecución recuperable. "
             + (
                 f"Búsqueda amplia: {', '.join(broad_terms)}; rubros se clasifican después."
                 if source_key != "articles"
@@ -6282,89 +5904,25 @@ if selected_source_run or run or run_sequential:
             )
         )
     elif run:
-        mixed_required = []
-        if any(mode in source_modes for mode in {"gdelt_news", "google_news_rss"}):
-            mixed_required.append("news")
-        if any(mode in source_modes for mode in {"forums", "reddit_rss"}):
-            mixed_required.append("forum")
-        if "institutional_gdelt" in source_modes:
-            mixed_required.append("institutional_report")
-        if any(mode in source_modes for mode in {"openalex_oa", "crossref", "redalyc"}):
-            mixed_required.append("scientific_article")
-        mixed_required = merge_unique(mixed_required)
-        run_config["required_source_types"] = mixed_required
-        run_config["accept_source_types"] = mixed_required
-        mixed_seed_files = [
-            path for path in config.get("seed_url_files_by_source", {}).values()
-            if path
-        ]
-        run_config["seed_url_file"] = ",".join(merge_unique(mixed_seed_files))
-        run_config["target_min_per_source_type_year"] = max(
-            int(min_news_per_year) if "news" in mixed_required else 0,
-            int(min_forums_per_year) if "forum" in mixed_required else 0,
-            int(target_min_per_type_year),
-        )
-        academic_modes = [mode for mode in source_modes if mode in {"openalex_oa", "crossref", "redalyc"}]
-        indexed_modes = [mode for mode in source_modes if mode not in {"openalex_oa", "crossref", "redalyc"}]
-        if academic_modes and indexed_modes:
-            academic_step = dict(run_config)
-            academic_step["source_modes"] = academic_modes
-            academic_step["download_pdfs"] = True
-            academic_step["required_source_types"] = ["scientific_article"]
-            academic_step["accept_source_types"] = ["scientific_article"]
-            academic_step["target_min_per_source_type_year"] = int(target_min_per_type_year)
-            academic_step["seed_url_file"] = config.get("seed_url_files_by_source", {}).get("articles", "")
-            academic_step["source_collection"] = "articles_first"
-            academic_step["target_source_type"] = "scientific_article"
-            academic_step["variant_rubric"] = "mixed_layered"
-            academic_step["variant_term"] = query
-            academic_step["period_label"] = f"{int(start_year)}-{int(end_year)}"
-            academic_step["output_dir"] = str(Path(output_dir) / "mixed_layers" / "articles_first")
-
-            public_step = dict(run_config)
-            public_step["source_modes"] = indexed_modes
-            public_step["download_pdfs"] = False
-            public_broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
-            public_step["query"] = public_broad_terms[0]
-            public_step["query_variants"] = public_broad_terms[1:]
-            public_step["classification_rubrics"] = selected_variant_rubrics
-            public_required = [source_type for source_type in mixed_required if source_type != "scientific_article"]
-            public_step["required_source_types"] = public_required
-            public_step["accept_source_types"] = public_required
-            public_step["target_min_per_source_type_year"] = max(
-                int(min_news_per_year) if "news" in public_required else 0,
-                int(min_forums_per_year) if "forum" in public_required else 0,
-                int(target_min_per_type_year) if "institutional_report" in public_required else 0,
-            )
-            public_step["seed_url_file"] = ",".join(merge_unique(mixed_seed_files))
-            public_step["source_collection"] = "public_layers"
-            public_step["target_source_type"] = ""
-            public_step["variant_rubric"] = "mixed_layered"
-            public_step["variant_term"] = query
-            public_step["period_label"] = f"{int(start_year)}-{int(end_year)}"
-            public_step["output_dir"] = str(Path(output_dir) / "mixed_layers" / "public_layers")
-            run_config["run_plan"] = [academic_step, public_step]
-            run_config["output_dir"] = output_dir
-        elif indexed_modes and not academic_modes:
-            public_broad_terms = broad_collection_terms(query, selected_variant_rubrics, int(sequential_synonym_limit))
-            run_config["query"] = public_broad_terms[0]
-            run_config["query_variants"] = public_broad_terms[1:]
-            run_config["classification_rubrics"] = selected_variant_rubrics
-        st.info(
-            "Araña mezclada por capas: si incluye artículos científicos, ahora OpenAlex/Crossref corren primero "
-            "para que la capa académica no quede escondida detrás de 84 meses de RSS/GDELT. "
-            f"Tipos objetivo: {', '.join(mixed_required) or 'sin tipos objetivo explícitos'}. "
-            f"Máximo por tipo/año: {run_config['max_records_per_source_type_year']}."
-        )
+        run_config['classification_rubrics']=selected_variant_rubrics
+        run_config['sequential_source_layers']=[{'source_collection':'mixed','source_modes':source_modes,'download_pdfs':True}]
+        st.info("Coordinador mixto: índices académicos anuales y fuentes públicas mensuales; cuota total compartida.")
+    if not run_sequential and not selected_source_run:
+        run_config['sequential_source_layers']=[{'source_collection':'mixed','source_modes':run_config.get('source_modes',[]),'download_pdfs':run_config.get('download_pdfs',False)}]
     start_worker(run_config)
     st.rerun()
 
 if merge_bases:
-    merged = merge_source_bases(output_dir, ["news", "forums", "institutional", "articles", "reports_other"])
-    st.session_state.spider_rows = merged
-    st.session_state.loaded_path = str(Path(output_dir) / "news_records_merged.json")
-    st.success(f"Base fusionada: {len(merged)} registros.")
-    st.rerun()
+    from collection_jobs import Job,job_base,open_job
+    codes=list(dict.fromkeys(c.strip() for c in merge_job_codes.splitlines() if c.strip()))
+    if not codes:st.error('Indica los códigos de las ejecuciones que quieres conjugar.')
+    else:
+        try:
+            merged_job=Job.conjugate(job_base(),config,[open_job(c) for c in codes])
+            st.session_state.collection_job=merged_job.root.name
+            st.query_params['job']=merged_job.root.name
+            drain_queue();st.rerun()
+        except Exception as exc:st.error(f'No se pudieron conjugar las bases: {exc}')
 
 if stop:
     request_stop()
@@ -6376,23 +5934,42 @@ if st.session_state.spider_running:
 if st.session_state.spider_error:
     st.error(st.session_state.spider_error)
 
+from collection_jobs import open_job, Job, job_base
+st.subheader("Ejecución recuperable")
+resume_code=st.text_input("Código de ejecución para recuperar o reanudar", value=st.session_state.get('collection_job',''))
+if st.button("Recuperar ejecución", disabled=st.session_state.spider_running):
+    try:
+        recovered_job=open_job(resume_code.strip())
+        st.session_state.collection_job=recovered_job.root.name
+        st.query_params['job']=recovered_job.root.name
+        drain_queue();st.rerun()
+    except (ValueError,OSError) as exc:st.error(str(exc))
+backup_upload=st.file_uploader("Restaurar ejecución completa desde ZIP",type=['zip'],key='job_restore')
+if backup_upload is not None and st.button("Importar respaldo de ejecución",disabled=st.session_state.spider_running):
+    try:
+        restored=Job.restore(job_base(),backup_upload.getvalue())
+        st.session_state.collection_job=restored.root.name
+        st.query_params['job']=restored.root.name
+        drain_queue();st.rerun()
+    except Exception as exc:st.error(f"No se pudo restaurar: {exc}")
+if st.session_state.get('collection_job'):
+    try:
+        current_job=open_job(st.session_state.collection_job)
+        _,job_coverage=current_job.export()
+        st.write(f"Estado: {current_job.status()} · Código: {current_job.root.name}")
+        st.dataframe(job_coverage['annual'],hide_index=True,use_container_width=True)
+        with st.expander("Cobertura y motivos de exclusión"):
+            st.json(job_coverage)
+        st.caption(job_coverage['sampling_note'])
+        st.download_button("Descargar ejecución completa ZIP",current_job.archive(),"SIAN_ejecucion.zip","application/zip")
+        if st.button("Reanudar tareas pendientes",disabled=current_job.active()):
+            current_job.launch();st.session_state.spider_running=True;st.rerun()
+        from job_backup import configured
+        st.caption(f"Respaldo externo: {current_job.get('backup_status','pendiente') if configured() else 'sin configurar'}. El código es privado; compártelo sólo para dar acceso a tu corpus.")
+        st.caption("El código recupera la ejecución en este servidor. Conserva el ZIP para restaurarla después de perder el disco del servidor. SIAN_DATA_DIR permite usar un volumen persistente.")
+    except (ValueError,OSError) as exc:st.error(str(exc))
 if st.session_state.spider_logs:
     st.subheader("Avance")
-    live_counts = live_balance_counts_from_logs(st.session_state.spider_logs)
-    if live_counts:
-        st.caption("Contadores vivos recuperados de los logs de ejecución.")
-        st.dataframe(
-            [
-                {
-                    "year": year,
-                    "source_type": source_type,
-                    "accepted_usable_so_far": count,
-                }
-                for (year, source_type), count in sorted(live_counts.items())
-            ],
-            use_container_width=True,
-            hide_index=True,
-        )
     st.code("\n".join(st.session_state.spider_logs[-40:]))
 
 st.subheader("Archivos y respaldo")
@@ -6419,7 +5996,7 @@ if st.session_state.spider_rows:
     render_results(st.session_state.spider_rows)
 
 if st.session_state.spider_running:
-    time.sleep(1)
+    time.sleep(3)
     st.rerun()
 
 st.divider()
