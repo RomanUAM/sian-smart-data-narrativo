@@ -1,4 +1,5 @@
 from __future__ import annotations
+from web_corpus_io import parse_corpus_upload, saved_files, corpus_archive, save_collected_rows
 from corpus_storage import atomic_write
 from corpus_contract import identity_key, merge_record, merge_rows as contract_merge_rows
 
@@ -12,6 +13,7 @@ import re
 import shutil
 import statistics
 import threading
+import tempfile
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -231,7 +233,8 @@ def drain_queue() -> None:
         elif kind == "done":
             st.session_state.spider_rows = payload
             st.session_state.spider_running = False
-            st.session_state.spider_logs.append("Finished.")
+            st.session_state.loaded_path = st.session_state.spider_config.get("output_dir", "news_output")
+            st.session_state.spider_logs.append(f"Finalizado: {len(payload)} registros. Revisa Archivos y respaldo.")
         elif kind == "error":
             st.session_state.spider_error = str(payload)
             st.session_state.spider_running = False
@@ -320,6 +323,7 @@ def start_worker(config: dict) -> None:
                         all_rows.append(row)
                         if has_usable_text(row):
                             sequential_counts[(int(row.get("year") or target_year), str(row.get("source_type") or target_type))] += 1
+                    save_collected_rows(config["output_dir"], contract_merge_rows(all_rows), sequential=True)
                     progress(
                         f"Finished sequential run {index}/{total_steps}: "
                         f"{step_config.get('variant_rubric', 'general')} · "
@@ -371,6 +375,7 @@ def start_worker(config: dict) -> None:
                     row["narrative_rubrics"] = ", ".join(narrative_rubrics)
                     row["narrative_rubric_terms"] = ", ".join(narrative_terms)
                     rows.append(row)
+                save_collected_rows(config["output_dir"], rows)
                 update_run_manifest(config, "finished", rows)
                 q.put(("done", rows))
         except Exception as exc:  # noqa: BLE001
@@ -1571,7 +1576,7 @@ def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
 
 def render_analysis_tab(default_output_dir: str) -> None:
     st.subheader("Análisis local de narrativas")
-    st.caption("Todo se calcula en tu computadora con los JSON guardados. No se envían textos a modelos externos.")
+    st.caption("El análisis usa los JSON guardados o importados. En la versión web se calcula en el servidor de SIAN; no se envían textos a modelos externos.")
     st.markdown("Mapa de módulos disponibles")
     st.dataframe(
         [
@@ -1663,6 +1668,18 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "toda conclusión debe revisar sesgos de fuente, idioma, plataforma, región y exclusiones."
         )
 
+    uploads = st.file_uploader("Importar corpus desde tu computadora (JSON o JSONL)", type=["json", "jsonl"], accept_multiple_files=True, key="corpus_uploads")
+    if st.button("Cargar archivos importados", disabled=not uploads or st.session_state.spider_running):
+        try:
+            imported = contract_merge_rows([row for upload in uploads for row in parse_corpus_upload(upload.getvalue(), upload.name)])
+            destination = Path(default_output_dir) / "imports" / "news_records.json"
+            atomic_write(destination, json.dumps(imported, ensure_ascii=False, indent=2), encoding="utf-8")
+            st.session_state.spider_rows = imported
+            st.session_state.loaded_path = str(destination)
+            st.success(f"Importados {len(imported)} registros. Puedes descargar un respaldo.")
+        except (ValueError, UnicodeError, OSError) as exc:
+            st.error(f"No se importó el corpus: {exc}")
+
     col_path, col_button = st.columns([3, 1])
     with col_path:
         detected_paths = analysis_path_options(default_output_dir)
@@ -1710,7 +1727,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             st.error(report_msg)
         st.info(
             "Carga un corpus guardado o corre primero la araña. "
-            "Si Streamlit se cerró, usa la carpeta de salida para recuperar los JSON. "
+            "En la web, importa tus JSON descargados; las rutas corresponden al servidor. "
             "Las redes y el modelo multiobjetivo aparecen después de cargar registros analizables."
         )
         return
@@ -5680,7 +5697,11 @@ with st.sidebar:
         ),
         disabled=st.session_state.spider_running,
     )
-    output_dir = st.text_input("Carpeta de salida", value="news_output", disabled=st.session_state.spider_running)
+    hosted = Path("/mount/src").is_dir()
+    if hosted and "web_output_dir" not in st.session_state:
+        st.session_state.web_output_dir = str(Path(tempfile.mkdtemp(prefix="sian-")) / "news_output")
+    output_dir = st.text_input("Carpeta de salida", value=st.session_state.get("web_output_dir", "news_output"), disabled=st.session_state.spider_running or hosted)
+    st.caption("En la web los archivos se guardan temporalmente en el servidor. Descarga el respaldo antes de cerrar; no se guardan automáticamente en tu computadora.")
     default_seed_path = APP_ROOT / "seed_sources" / "tatuaje_mexico_news_seed_urls.json"
     default_forum_seed_path = APP_ROOT / "seed_sources" / "tatuaje_public_conversation_seed_urls.json"
     default_institutional_seed_path = APP_ROOT / "seed_sources" / "tatuaje_institutional_seed_urls.json"
@@ -6373,6 +6394,26 @@ if st.session_state.spider_logs:
             hide_index=True,
         )
     st.code("\n".join(st.session_state.spider_logs[-40:]))
+
+st.subheader("Archivos y respaldo")
+artifact_root = Path(output_dir)
+artifacts = saved_files(artifact_root)
+if artifacts:
+    st.caption(f"{len(artifacts)} archivos guardados. Durante una corrida el respaldo contiene el avance disponible.")
+    st.download_button("Descargar respaldo ZIP", corpus_archive(artifact_root), "SIAN_respaldo.zip", "application/zip", key="corpus_backup")
+    with st.expander("Ver y descargar archivos guardados"):
+        relative_files = [str(p.relative_to(artifact_root)) for p in artifacts]
+        selected_file = st.selectbox("Archivo guardado", relative_files, key="saved_artifact")
+        selected_path = artifact_root / selected_file
+        st.download_button("Descargar archivo seleccionado", selected_path.read_bytes(), selected_path.name, key="saved_artifact_download")
+    if st.button("Cargar avance guardado para analizar", disabled=st.session_state.spider_running):
+        recovered = load_saved_rows(output_dir)
+        if recovered:
+            st.success(f"Recuperados {len(recovered)} registros.")
+        else:
+            st.warning("Hay archivos de control pero todavía no hay documentos recuperados. Revisa Avance y los errores de las fuentes.")
+else:
+    st.info("Todavía no hay archivos en esta sesión. Ejecuta una recolección o importa un corpus JSON/JSONL.")
 
 if st.session_state.spider_rows:
     render_results(st.session_state.spider_rows)
