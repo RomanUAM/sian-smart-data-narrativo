@@ -649,40 +649,10 @@ def render_source_status_dashboard(rows: list[dict], config: dict | None = None)
     status_rows = source_status_rows(rows, config)
     if not status_rows:
         return
-    st.subheader("Estado operacional por fuente, año y tipo")
-    st.caption(
-        "Esta tabla convierte los logs de ejecución en estado auditable. "
-        "`gap_to_min` muestra qué capas no alcanzaron la muestra mínima configurada."
-    )
-    by_type_year: dict[tuple[int, str], dict] = {}
-    for row in status_rows:
-        key = (row["year"], row["source_type"])
-        if key not in by_type_year:
-            by_type_year[key] = {
-                "year": row["year"],
-                "source_type": row["source_type"],
-                "usable": 0,
-                "ok": 0,
-                "ok_partial": 0,
-                "too_short": 0,
-                "fetch_error": 0,
-                "error": 0,
-                "target_min": row["target_min"],
-                "target_max": row["target_max"],
-            }
-        target = by_type_year[key]
-        for field in ["usable", "ok", "ok_partial", "too_short", "fetch_error", "error"]:
-            target[field] += int(row.get(field, 0) or 0)
-    summary_rows = []
-    for row in by_type_year.values():
-        row["gap_to_min"] = max(0, int(row["target_min"]) - int(row["usable"]))
-        row["cap_remaining"] = max(0, int(row["target_max"]) - int(row["usable"]))
-        row["status"] = "ok" if row["gap_to_min"] == 0 else "under_target"
-        summary_rows.append(row)
-    summary_rows = sorted(summary_rows, key=lambda item: (item["year"], item["source_type"]))
-    st.dataframe(summary_rows, use_container_width=True)
-    with st.expander("Detalle por medio"):
-        st.dataframe(status_rows, use_container_width=True)
+    fields = ("year", "source_type", "medium", "usable", "ok", "ok_partial", "too_short", "fetch_error", "error", "source_api", "last_error")
+    st.subheader("Estado de extracción por fuente")
+    st.caption("Distribución descriptiva de resultados de extracción. La cuota total anual se informa en la cobertura de la ejecución; no se asignan metas por tipo de fuente.")
+    st.dataframe([{key: row.get(key) for key in fields} for row in status_rows], use_container_width=True)
 
 
 def corpus_social_balance_diagnostic(rows: list[dict]) -> dict:
@@ -1221,45 +1191,11 @@ def render_results(rows: list[dict]) -> None:
     st.dataframe([balance], use_container_width=True)
     if balance["status"] == "not_valid_for_social_narrative":
         st.error(
-            "Este corpus NO es válido para análisis social de narrativa: está dominado por artículos científicos "
-            "y faltan noticias o conversaciones orgánicas. Debe recolectarse de nuevo balanceando fuentes."
+            "La cobertura limita las conclusiones a las fuentes disponibles. "
+            "Faltan voces de noticias o conversaciones; los documentos existentes siguen siendo utilizables para las preguntas que puedan responder."
         )
     elif balance["status"] == "incomplete_social_layers":
         st.warning("El corpus tiene capas sociales incompletas: faltan noticias o foros/conversaciones orgánicas.")
-    config = st.session_state.get("spider_config", {})
-    max_per_type = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
-    target_min_per_type = int(config.get("target_min_per_source_type_year", 0) or 0)
-    coverage_rows = annual_news_coverage_rows(rows, max_per_type)
-    if coverage_rows:
-        st.subheader("Cobertura anual de noticias")
-        st.caption(
-            "Esta tabla audita si la muestra periodística alcanza la meta anual. "
-            "No cuenta artículos científicos ni foros; sólo registros clasificados como noticia."
-        )
-        st.dataframe(coverage_rows, use_container_width=True)
-        insufficient = [row for row in coverage_rows if row["status"] != "ok"]
-        if insufficient:
-            years = ", ".join(str(row["year"]) for row in insufficient)
-            st.warning(
-                f"No se alcanzó el máximo/objetivo de referencia de {max_per_type} noticias usables en: {years}. "
-                "Para esos años hay que ampliar fuentes, variantes de búsqueda, dominios o aceptar una muestra menor reportada como limitación."
-            )
-    source_coverage = annual_source_type_coverage_rows(rows, target_min_per_type, max_per_type)
-    if source_coverage:
-        st.subheader("Cobertura por tipo discursivo")
-        st.caption(
-            "Esta auditoría revisa si realmente hay noticias, artículos y conversaciones orgánicas. "
-            "Si `forum = 0`, el corpus no contiene foros/conversaciones para ese año."
-        )
-        st.dataframe(source_coverage, use_container_width=True)
-        under_target = [row for row in source_coverage if str(row.get("source_balance_status", "")).startswith("missing_or_under_target")]
-        if under_target:
-            years = ", ".join(str(row["year"]) for row in under_target)
-            st.warning(
-                f"Falta representación mínima de uno o más tipos discursivos en: {years}. "
-                "Hay que ampliar fuentes/API/exportaciones locales o reportarlo como limitación."
-            )
-
     st.subheader("Vista previa")
     st.dataframe(
         [
@@ -1562,29 +1498,6 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             "Faltan voces de noticias/foros; los documentos existentes siguen siendo utilizables para las preguntas que puedan responder."
         )
     render_source_status_dashboard(rows, config=st.session_state.get("spider_config", {}))
-
-    config = st.session_state.get("spider_config", {})
-    max_per_type = int(config.get("max_records_per_source_type_year", config.get("target_news_per_year", 100)) or 100)
-    target_min_per_type = int(config.get("target_min_per_source_type_year", 0) or 0)
-    coverage_rows = annual_news_coverage_rows(rows, max_per_type)
-    if coverage_rows:
-        with st.expander("Auditoría de cobertura anual de noticias", expanded=True):
-            st.dataframe(coverage_rows, use_container_width=True)
-            insufficient = [row for row in coverage_rows if row["status"] != "ok"]
-            if insufficient:
-                st.warning(
-                    "Hay años con muestra periodística insuficiente. "
-                    "Eso debe corregirse con más fuentes/variantes o reportarse como limitación."
-                )
-    source_coverage = annual_source_type_coverage_rows(rows, target_min_per_type, max_per_type)
-    if source_coverage:
-        with st.expander("Auditoría de fuentes discursivas", expanded=True):
-            st.dataframe(source_coverage, use_container_width=True)
-            if any(str(row.get("source_balance_status", "")).startswith("missing_or_under_target") for row in source_coverage):
-                st.warning(
-                    "Falta representación mínima de uno o más tipos discursivos. "
-                    "El análisis de narrativa social queda incompleto si sólo hay noticias o sólo hay artículos."
-                )
 
     source_type_options = sorted({row_source_type(row) for row in usable})
     year_options = sorted({int(row.get("year")) for row in usable if row.get("year")})
@@ -3788,16 +3701,6 @@ EXCLUSION_PRESETS = {
             "colonoscopy",
             "polypectomy",
             "indocyanine green",
-            "hepatitis",
-            "antiviral",
-            "HIV",
-            "vaccine",
-            "vaccines",
-            "radiology",
-            "melanocytic nevi",
-            "keloid",
-            "fibroblast",
-            "dermatology treatment",
         ],
         "domains": [
             "halfwheel.com",
@@ -5761,11 +5664,10 @@ notas dentro de esos medios. Para tatuaje en México esto permite buscar en NMAS
 Aristegui, El Universal, Milenio y La Jornada sin esperar a que el índice los
 encuentre por azar.
 
-La cuota se aplica por año y por tipo discursivo. Con máximo anual = 100, el sistema
-puede guardar hasta 100 noticias, 100 foros, 100 artículos científicos, 100 reportes
-institucionales y 100 registros de otro tipo por cada año. El mínimo deseado audita
-si falta representación de alguno; no se debe concluir narrativa social completa si
-algún tipo queda en cero o por debajo de la meta.
+La meta es el total anual compartido entre las capas. La cobertura de la ejecución
+cuenta documentos únicos con publicación comprobable, texto suficiente y pertinencia.
+Las distribuciones por fuente describen qué voces se recuperaron; no tienen cuotas
+automáticas y no prueban representatividad social.
 
 El grafo de conocimiento local permite que los grupos cambien con el tópico:
 usa monogramas, bigramas y trigramas centrales, fuentes, años, idioma y localización.
