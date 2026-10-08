@@ -10,11 +10,12 @@ from collection_jobs import Job
 from process_lock import worker_lock
 from corpus_storage import atomic_json
 from historical_sources import sitemap_page
+from job_backup import PeriodicBackup
 
 def execute(job, crawler=None):
     from news_spider import crawl_news, request_html, robots_allowed
     crawler=crawler or crawl_news
-    with worker_lock(job.root/'worker.lock'):
+    with worker_lock(job.root/'worker.lock'), PeriodicBackup(job):
         os.environ['SIAN_CACHE_DIR']=str(job.root/'cache')
         os.environ['SIAN_SOURCE_STATE']=str(job.db)
         job.set('task_deferred',False)
@@ -69,8 +70,6 @@ def execute(job, crawler=None):
                     with job.connect() as c:c.execute('UPDATE tasks SET status="failed",error=? WHERE id=?',(type(exc).__name__+': '+str(exc),task_id))
                     job.log(f'Tarea {task_id} falló: {type(exc).__name__}: {exc}')
                 job.export()
-                from job_backup import checkpoint
-                checkpoint(job)
             _,coverage=job.export()
             with job.connect() as c:remaining=c.execute('SELECT count(*) FROM tasks WHERE status IN ("pending","deferred","failed")').fetchone()[0]
             job.set('status','paused' if job.get('pause',False) else ('target_met' if coverage['target_met'] else ('waiting_sources' if remaining else 'finished_with_gaps')))
@@ -78,8 +77,6 @@ def execute(job, crawler=None):
             job.set('status','interrupted');job.log(type(exc).__name__+': '+str(exc));raise
         finally:
             job.export()
-            from job_backup import checkpoint
-            checkpoint(job)
 
 def main():
     if len(sys.argv)!=2:raise SystemExit('Uso: python -m collection_runner CARPETA_JOB')

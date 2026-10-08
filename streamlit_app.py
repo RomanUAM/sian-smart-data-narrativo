@@ -95,6 +95,16 @@ st.set_page_config(page_title="SIAN · Sistema de Información y Análisis de Na
 
 APP_ROOT = Path(__file__).resolve().parent
 
+# Streamlit Cloud secrets must reach the independent worker process.
+import os
+try:
+    for secret_name in ('SIAN_BACKUP_BUCKET', 'SIAN_BACKUP_PREFIX', 'AWS_ACCESS_KEY_ID',
+                        'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_DEFAULT_REGION'):
+        if secret_name in st.secrets:
+            os.environ[secret_name] = str(st.secrets[secret_name])
+except (FileNotFoundError, st.errors.StreamlitSecretNotFoundError):
+    pass
+
 
 def json_default(value):
     if isinstance(value, Path):
@@ -5781,6 +5791,11 @@ indexables y deben reportarse como tales.
     )
 
 st.subheader("Recolección por capa de fuente")
+from job_backup import configured as external_backup_configured
+if external_backup_configured():
+    st.info("Respaldo externo configurado: documentos y análisis se actualizan cada 20 minutos y al terminar. Revisa la fecha de la última copia confirmada en tu ejecución.")
+else:
+    st.warning("Respaldo automático cada 20 minutos y al terminar: sólo local por ahora. El guardado permanente requiere conectar almacenamiento externo; descarga el ZIP mientras se configura.")
 st.caption(
     "Cada acción crea una ejecución recuperable. La corrida con todas las capas conjuga las fuentes en una base común, con procedencia y clasificación de rubros."
 )
@@ -5960,7 +5975,19 @@ if st.session_state.get('collection_job'):
         if st.button("Reanudar tareas pendientes",disabled=current_job.active()):
             current_job.launch();st.session_state.spider_running=True;st.rerun()
         from job_backup import configured
-        st.caption(f"Respaldo externo: {current_job.get('backup_status','pendiente') if configured() else 'sin configurar'}. El código es privado; compártelo sólo para dar acceso a tu corpus.")
+        st.caption("Respaldo y análisis automáticos cada 20 minutos y al finalizar o pausar; funcionan mientras el trabajador siga activo.")
+        if configured():
+            st.caption(f"Respaldo externo: {current_job.get('backup_status', 'pendiente')} · última copia confirmada: {current_job.get('backup_saved_at', 'todavía ninguna')}.")
+        else:
+            st.warning("Guardado permanente sin activar: las copias están sólo en el disco del servidor. Conecta almacenamiento externo o descarga el ZIP para conservarlas.")
+        latest_checkpoint = current_job.root/'latest_checkpoint.zip'
+        if latest_checkpoint.exists():
+            st.download_button("Descargar último respaldo con análisis", latest_checkpoint.read_bytes(), "SIAN_respaldo_analizado.zip", "application/zip")
+        analysis_path = current_job.root/'checkpoint_analysis.json'
+        if analysis_path.exists():
+            with st.expander("Ver análisis del último respaldo y usos posibles"):
+                st.json(json.loads(analysis_path.read_text()))
+        st.caption("El código es privado; compártelo sólo para dar acceso a tu corpus.")
         st.caption("El código recupera la ejecución en este servidor. Conserva el ZIP para restaurarla después de perder el disco del servidor. SIAN_DATA_DIR permite usar un volumen persistente.")
     except (ValueError,OSError) as exc:st.error(str(exc))
 if st.session_state.spider_logs:

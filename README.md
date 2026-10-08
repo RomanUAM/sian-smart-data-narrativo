@@ -63,3 +63,21 @@ python -m unittest discover -s tests -q
 Las pruebas comprueban identidad, fechas, conflictos, contratos, pausas compartidas, interrupción, restauración, cursores históricos, cuota y conjugación. La interfaz también se verifica con Streamlit AppTest. Estas pruebas no garantizan disponibilidad de proveedores ni una cuota conseguida.
 
 GitHub contiene código, documentación y semillas curadas. Las bases de ejecución, corpus descargados, cachés y credenciales se excluyen. Los textos se analizan en el proceso donde se ejecuta SIAN, sin enviarlos a un modelo externo; en la app alojada ese proceso está en el servidor.
+
+## Respaldo y análisis cada 20 minutos
+
+El trabajador crea una copia consistente al iniciar, cada 1 200 segundos y al terminar, pausar o sufrir una excepción controlada. El temporizador es independiente de las búsquedas. Cada copia incluye los registros, SQLite, plan, cobertura y `checkpoint_analysis.json`/`.md`, con disponibilidad para lectura temática, comparación por fuentes, descripción temporal y extracción revisable de redes. El informe no valida representatividad, posturas ni causalidad.
+
+`latest_checkpoint.zip` se actualiza en el disco del trabajador. **Eso no es almacenamiento permanente en Streamlit Cloud.** Sólo si `SIAN_BACKUP_BUCKET` está configurado se envía el ZIP a S3 y se confirma `backup_saved_at` después de un envío exitoso. Las copias fallidas se indican y se reintentan en el siguiente intervalo; el código de ejecución permite recuperar la última copia externa. Un cierre abrupto puede perder hasta el avance posterior al último envío confirmado.
+
+En Streamlit Cloud, configurar en los Secrets de la app (nunca en GitHub ni en el chat):
+
+```toml
+SIAN_BACKUP_BUCKET = "NOMBRE_DEL_BUCKET_PRIVADO"
+SIAN_BACKUP_PREFIX = "sian/jobs"
+AWS_DEFAULT_REGION = "REGION_DEL_BUCKET"
+AWS_ACCESS_KEY_ID = "CLAVE_DE_ACCESO"
+AWS_SECRET_ACCESS_KEY = "CLAVE_SECRETA"
+```
+
+El bucket debe existir y las credenciales deben permitir `s3:PutObject` y `s3:GetObject` sólo sobre el prefijo elegido. Activar versionado del bucket si se quieren conservar copias anteriores; la app actualiza el objeto de la ejecución. Las credenciales se pasan al trabajador independiente sin incluirse en las bases o respaldos. La interfaz muestra la fecha de la última copia externa confirmada y permite descargar la copia analizada. Sin Secrets configurados, esta función queda en modo local y no evita pérdidas por reinicio del servidor.
