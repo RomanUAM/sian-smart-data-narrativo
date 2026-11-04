@@ -37,6 +37,10 @@ def parse_corpus_upload(data: bytes, filename: str) -> list[dict]:
             value = [value]
     else:
         raise ValueError('Formatos admitidos: JSON, JSONL, CSV y TXT.')
+    return merge_rows(prepare_upload_rows(value))
+
+
+def prepare_upload_rows(value):
     if not isinstance(value, list) or any(not isinstance(row, dict) for row in value):
         raise ValueError('El archivo debe contener documentos, no un manifiesto o configuración.')
     aliases = {'titulo': 'title', 'texto': 'text_clean', 'text': 'text_clean', 'autor': 'author', 'fuente': 'medium', 'fecha': 'published_date'}
@@ -51,7 +55,55 @@ def parse_corpus_upload(data: bytes, filename: str) -> list[dict]:
         row.setdefault('source_api', 'user_file_import')
     if any(not any(row.get(k) for k in ('url', 'title', 'text_clean', 'pdf_text_clean')) for row in value):
         raise ValueError('El archivo debe contener documentos, no un manifiesto o configuración.')
-    return merge_rows(value)
+    return value
+
+
+def iter_corpus_upload(data: bytes, filename: str):
+    # Large exports are arrays. Decode each object separately so a single
+    # non-BMP character cannot widen the decoded string for the entire file.
+    if Path(filename).suffix.lower() != ".json":
+        yield from parse_corpus_upload(data, filename)
+        return
+    with io.TextIOWrapper(io.BytesIO(data), encoding="utf-8-sig") as stream:
+        buffer = stream.read(65536).lstrip()
+        if not buffer.startswith("["):
+            yield from parse_corpus_upload(data, filename)
+            return
+        decoder = json.JSONDecoder()
+        buffer = buffer[1:]
+
+        def next_token():
+            nonlocal buffer
+            buffer = buffer.lstrip()
+            while not buffer:
+                block = stream.read(65536)
+                if not block:
+                    raise ValueError("El arreglo JSON está incompleto.")
+                buffer = block.lstrip()
+            return buffer[0]
+
+        if next_token() != "]":
+            while True:
+                while True:
+                    try:
+                        row, end = decoder.raw_decode(buffer)
+                        break
+                    except json.JSONDecodeError:
+                        block = stream.read(65536)
+                        if not block:
+                            raise
+                        buffer += block
+                yield from prepare_upload_rows([row])
+                buffer = buffer[end:]
+                token = next_token()
+                if token == "]":
+                    break
+                if token != ",":
+                    raise ValueError("Se esperaba una coma entre registros JSON.")
+                buffer = buffer[1:]
+                next_token()
+        if buffer[1:].strip() or stream.read().strip():
+            raise ValueError("Hay contenido después del arreglo JSON.")
 
 
 def saved_files(root: str | Path) -> list[Path]:

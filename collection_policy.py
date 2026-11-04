@@ -26,13 +26,13 @@ def classify(row, rubrics):
     row['narrative_terms'] = sorted(set(old_terms + hits))
     return row
 
-def assess(rows, config, today=None):
+def assess(rows, config, today=None, *, already_merged=False):
     today = today or dt.date.today()
     start, end = int(config['start_year']), min(int(config['end_year']), today.year)
     target = max(1, int(config.get('target_total_per_year', 200)))
     counts, sources, rubrics, months, reasons = Counter(), Counter(), Counter(), Counter(), Counter()
     fingerprints = {}
-    merged = merge_rows(rows)
+    merged = list(rows) if already_merged else merge_rows(rows)
     # Prefer the most informative copy, with deterministic tie breaking across resumes.
     merged.sort(key=lambda r: (-len(r.get('text_clean') or ''), identity_key(r)))
     for row in merged:

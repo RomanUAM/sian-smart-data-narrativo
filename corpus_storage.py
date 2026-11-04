@@ -17,6 +17,20 @@ def atomic_write(path, data, encoding="utf-8"):
     finally:
         if os.path.exists(name):os.unlink(name)
 
+def atomic_text_chunks(path, chunks):
+    path = Path(path)
+    fd, name = tempfile.mkstemp(prefix="." + path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.writelines(chunks)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
 def atomic_json(path,data):atomic_write(path,json.dumps(data,ensure_ascii=False,indent=2,default=str))
 
 class CorpusStore:

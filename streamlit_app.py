@@ -1,6 +1,6 @@
 from __future__ import annotations
 from geographic_scope import scope_terms
-from web_corpus_io import parse_corpus_upload, saved_files, corpus_archive, save_collected_rows
+from web_corpus_io import iter_corpus_upload, saved_files, corpus_archive, save_collected_rows
 from corpus_storage import atomic_write
 from corpus_contract import identity_key, merge_record, merge_rows as contract_merge_rows
 
@@ -5644,18 +5644,19 @@ def store_user_elements(elements):
     job = Job.create(job_base(), import_config, [])
     for row in elements:
         job.ingest(row)
+    with job.connect() as connection:
+        count = connection.execute("SELECT COUNT(*) FROM records").fetchone()[0]
+    if not count:
+        raise ValueError("Los archivos no contienen elementos.")
     job.set('status', 'imported')
-    job.log(f"Importados {len(elements)} elementos proporcionados por el usuario; sin búsquedas automáticas.")
+    job.log(f"Importados {count} elementos proporcionados por el usuario; sin búsquedas automáticas.")
     job.export()
     st.session_state.collection_job = job.root.name
     st.query_params['job'] = job.root.name
-    drain_queue()
 
 if st.button("Cargar mis archivos", disabled=not uploads or st.session_state.spider_running):
     try:
-        imported = contract_merge_rows([row for upload in uploads for row in parse_corpus_upload(upload.getvalue(), upload.name)])
-        if not imported:
-            raise ValueError("Los archivos no contienen elementos.")
+        imported = (row for upload in uploads for row in iter_corpus_upload(upload.getvalue(), upload.name))
         store_user_elements(imported)
         st.rerun()
     except (ValueError, UnicodeError, OSError, csv.Error) as exc:
@@ -5999,12 +6000,14 @@ artifact_root = Path(output_dir)
 artifacts = saved_files(artifact_root)
 if artifacts:
     st.caption(f"{len(artifacts)} archivos guardados. Durante una corrida el respaldo contiene el avance disponible.")
-    st.download_button("Descargar respaldo ZIP", corpus_archive(artifact_root), "SIAN_respaldo.zip", "application/zip", key="corpus_backup")
+    if st.button("Preparar respaldo ZIP"):
+        st.download_button("Descargar respaldo ZIP", corpus_archive(artifact_root), "SIAN_respaldo.zip", "application/zip", key="corpus_backup")
     with st.expander("Ver y descargar archivos guardados"):
         relative_files = [str(p.relative_to(artifact_root)) for p in artifacts]
         selected_file = st.selectbox("Archivo guardado", relative_files, key="saved_artifact")
         selected_path = artifact_root / selected_file
-        st.download_button("Descargar archivo seleccionado", selected_path.read_bytes(), selected_path.name, key="saved_artifact_download")
+        if st.button("Preparar archivo seleccionado"):
+            st.download_button("Descargar archivo seleccionado", selected_path.read_bytes(), selected_path.name, key="saved_artifact_download")
     if st.button("Cargar avance guardado para analizar", disabled=st.session_state.spider_running):
         recovered = load_saved_rows(output_dir)
         if recovered:
@@ -6014,7 +6017,13 @@ if artifacts:
 else:
     st.info("Todavía no hay archivos en esta sesión. Ejecuta una recolección o importa un corpus JSON/JSONL.")
 
-if st.session_state.spider_rows:
+large_corpus = len(st.session_state.spider_rows) >= 1000
+run_analysis = True
+if large_corpus:
+    st.success(f"Corpus disponible: {len(st.session_state.spider_rows)} registros.")
+    run_analysis = st.checkbox("Calcular análisis del corpus", key="run_large_corpus_analysis")
+
+if st.session_state.spider_rows and run_analysis:
     render_results(st.session_state.spider_rows)
 
 if st.session_state.spider_running:
@@ -6024,7 +6033,10 @@ if st.session_state.spider_running:
 st.divider()
 analysis_page = st.tabs(["Análisis local de narrativas"])[0]
 with analysis_page:
-    render_analysis_tab(output_dir)
+    if run_analysis:
+        render_analysis_tab(output_dir)
+    else:
+        st.info("Activa Calcular análisis del corpus para generar las vistas.")
 
 st.divider()
 st.markdown(

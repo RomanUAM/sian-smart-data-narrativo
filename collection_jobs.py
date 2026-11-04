@@ -14,7 +14,7 @@ from process_lock import worker_lock
 import zipfile
 from pathlib import Path
 from corpus_contract import identity_key, merge_record
-from corpus_storage import atomic_json, atomic_write
+from corpus_storage import atomic_json, atomic_write, atomic_text_chunks
 from collection_policy import assess
 from geographic_scope import scope_terms
 
@@ -73,9 +73,19 @@ class Job:
     def logs(self):
         with self.connect() as c:return [r[0] for r in reversed(c.execute('SELECT message FROM events ORDER BY id DESC LIMIT 40').fetchall())]
     def export(self):
-        rows,report=assess(self.rows(),self.get('config'))
-        atomic_json(self.root/'news_records_merged.json',rows)
-        atomic_write(self.root/'news_records_merged.jsonl',''.join(json.dumps(r,ensure_ascii=False)+'\n' for r in rows))
+        rows,report=assess(self.rows(),self.get('config'),already_merged=True)
+        def json_array_chunks():
+            yield "["
+            for index, row in enumerate(rows):
+                if index:
+                    yield ","
+                yield json.dumps(row, ensure_ascii=False, default=str)
+            yield "]"
+        atomic_text_chunks(self.root/'news_records_merged.json', json_array_chunks())
+        atomic_text_chunks(
+            self.root/'news_records_merged.jsonl',
+            (json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+        )
         with self.connect() as c:
             report['source_controls']=[{'engine':r[0],'next_allowed_at':dt.datetime.fromtimestamp(r[1],dt.UTC).isoformat(),'reason':r[2]} for r in c.execute('SELECT name,until,reason FROM engines')]
         atomic_json(self.root/'coverage.json',report)
