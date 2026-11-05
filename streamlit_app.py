@@ -6096,13 +6096,17 @@ if backup_upload is not None and st.button("Importar respaldo de ejecución",dis
 if st.session_state.get('collection_job'):
     try:
         current_job=open_job(st.session_state.collection_job)
-        _,job_coverage=current_job.export()
         st.write(f"Estado: {current_job.status()} · Código: {current_job.root.name}")
-        st.dataframe(job_coverage['annual'],hide_index=True,use_container_width=True)
-        with st.expander("Cobertura y motivos de exclusión"):
-            st.json(job_coverage)
-        st.caption(job_coverage['sampling_note'])
-        st.download_button("Descargar ejecución completa ZIP",current_job.archive(),"SIAN_ejecucion.zip","application/zip")
+        coverage_path = current_job.root / "coverage.json"
+        if coverage_path.exists():
+            job_coverage = json.loads(coverage_path.read_text(encoding="utf-8"))
+            st.dataframe(job_coverage['annual'], hide_index=True, use_container_width=True)
+            with st.expander("Cobertura guardada y motivos de exclusión"):
+                st.json(job_coverage)
+            st.caption(job_coverage['sampling_note'])
+        if st.button("Preparar ejecución completa ZIP"):
+            st.download_button("Descargar ejecución completa ZIP", current_job.archive(),
+                               "SIAN_ejecucion.zip", "application/zip", on_click="ignore")
         if st.button("Reanudar tareas pendientes",disabled=current_job.active()):
             current_job.launch();st.session_state.spider_running=True;st.rerun()
         from job_backup import configured
@@ -6112,8 +6116,9 @@ if st.session_state.get('collection_job'):
         else:
             st.warning("Guardado permanente sin activar: las copias están sólo en el disco del servidor. Conecta almacenamiento externo o descarga el ZIP para conservarlas.")
         latest_checkpoint = current_job.root/'latest_checkpoint.zip'
-        if latest_checkpoint.exists():
-            st.download_button("Descargar último respaldo con análisis", latest_checkpoint.read_bytes(), "SIAN_respaldo_analizado.zip", "application/zip")
+        if latest_checkpoint.exists() and st.button("Preparar último respaldo con análisis"):
+            st.download_button("Descargar último respaldo con análisis", latest_checkpoint.read_bytes(),
+                               "SIAN_respaldo_analizado.zip", "application/zip", on_click="ignore")
         analysis_path = current_job.root/'checkpoint_analysis.json'
         if analysis_path.exists():
             with st.expander("Ver análisis del último respaldo y usos posibles"):
