@@ -23,7 +23,7 @@ STOPWORDS = {
     "esos", "esta", "estaba", "estado", "estan", "están", "estar", "este", "esto",
     "estos", "fue", "ha", "han", "hasta", "hay", "la", "las", "le", "les", "lo", "los",
     "mas", "más", "me", "mi", "mientras", "muy", "no", "nos", "o", "otra", "otras",
-    "otro", "otros", "para", "pero", "por", "porque", "que", "qué", "se", "segun",
+    "otro", "otros", "solo", "para", "pero", "por", "porque", "que", "qué", "se", "segun",
     "según", "ser", "si", "sí", "sin", "sobre", "son", "su", "sus", "tambien",
     "también", "tan", "tanto", "te", "tiene", "tienen", "todo", "todos", "tras", "tu",
     "un", "una", "unas", "uno", "unos", "y", "ya",
@@ -435,12 +435,17 @@ def normalize_token_text(text: str) -> str:
     return (text or "").lower().translate(str.maketrans("áéíóúüñ", "aeiouun"))
 
 
+TOKEN_ALIASES = {"tatuajes": "tatuaje"}
+
+
 def tokenize(text: str, extra_stopwords: Iterable[str] | None = None) -> list[str]:
     text = normalize_token_text(text)
     tokens = re.findall(r"\b[a-z][a-z0-9_-]{2,}\b", text)
     stops = {normalize_token_text(stop).strip() for stop in STOPWORDS}
     stops.update(normalize_token_text(s).strip() for s in (extra_stopwords or []) if s.strip())
-    return [token for token in tokens if token not in stops and not token.isnumeric()]
+    stops = {TOKEN_ALIASES.get(stop, stop) for stop in stops}
+    canonical_tokens = (TOKEN_ALIASES.get(token, token) for token in tokens)
+    return [token for token in canonical_tokens if token not in stops and not token.isnumeric()]
 
 
 def record_ngrams(
