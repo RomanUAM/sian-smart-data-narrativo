@@ -1651,6 +1651,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         "Sentimiento",
         "Exportar",
         "Conceptos detectados",
+        "Flor léxica",
     ], key="sian_analysis_tabs", on_change="rerun")
 
     if analysis_tabs[0].open:
@@ -1851,6 +1852,29 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
 
         return
 
+    if analysis_tabs[14].open:
+        from lexical_figures import analysis_zip, lexical_figure_files
+
+        with analysis_tabs[14]:
+            st.markdown("Flor de relaciones léxicas")
+            st.caption("Cada cadena enlaza un monograma con un bigrama consecutivo dentro de un trigrama.")
+            terms = top_terms(selected_records, top_n=100, extra_stopwords=extra_stopwords)
+            bigrams = top_ngrams(selected_records, n=2, top_n=100, extra_stopwords=extra_stopwords)
+            trigrams = top_ngrams(selected_records, n=3, top_n=100, extra_stopwords=extra_stopwords)
+            figures = lexical_figure_files(terms, bigrams, trigrams, len(selected_records))
+            preview = figures.get("figuras/flor_lexica.png")
+            if preview:
+                st.image(preview)
+            else:
+                st.info("Los n-gramas seleccionados no forman cadenas consecutivas de los tres órdenes.")
+            for name, data in figures.items():
+                if name.endswith(".pdf"):
+                    filename = name.split("/")[-1]
+                    st.download_button(f"Descargar {filename}", data, filename, "application/pdf")
+            st.download_button("Descargar figuras y relaciones ZIP", analysis_zip(figures),
+                               "SIAN_figuras_lexicas.zip", "application/zip")
+        return
+
     if analysis_tabs[13].open:
         with analysis_tabs[13]:
             from collections import Counter
@@ -1954,7 +1978,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         for name, terms in default_groups.items()
     )
 
-    if analysis_tabs[1].open or analysis_tabs[12].open:
+    if analysis_tabs[1].open:
         with analysis_tabs[1]:
             st.markdown("Extracción local de estructura narrativa")
             st.caption(
@@ -2810,7 +2834,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 st.download_button("Descargar frente Pareto aceptable CSV", rows_to_csv(acceptable_pareto_rows), "acceptable_pareto_front.csv", "text/csv")
                 st.download_button("Descargar nodos seleccionados CSV", rows_to_csv(selected_cover["selected_nodes"]), "selected_cover_nodes.csv", "text/csv")
 
-    if analysis_tabs[6].open or analysis_tabs[7].open or analysis_tabs[10].open or analysis_tabs[12].open:
+    if analysis_tabs[6].open or analysis_tabs[7].open or analysis_tabs[10].open:
         with analysis_tabs[6]:
             st.markdown("Grupos de ideas / tópicos locales")
             st.caption("Los grupos se calculan por diccionarios editables, pero pueden inicializarse desde comunidades y nodos centrales del grafo de conocimiento.")
@@ -2883,7 +2907,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             st.markdown("Matriz documento × grupo de ideas")
             st.dataframe(matrix_rows, use_container_width=True)
 
-    if analysis_tabs[7].open or analysis_tabs[10].open or analysis_tabs[12].open:
+    if analysis_tabs[7].open or analysis_tabs[10].open:
         with analysis_tabs[7]:
             st.markdown("Grafo de conocimiento local")
             st.caption("Incluye monogramas, bigramas, trigramas, fuentes, años, idioma y localización. Los grupos adaptativos salen de comunidades del grafo.")
@@ -3044,7 +3068,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             st.dataframe(knowledge_graph["communities"], use_container_width=True)
             st.caption("Estos grupos cambian con el tópico, filtros, stopwords y umbrales. Úsalos como propuesta inicial y luego edita el diccionario en 'Grupos de ideas'.")
 
-    if analysis_tabs[8].open or analysis_tabs[12].open:
+    if analysis_tabs[8].open:
         with analysis_tabs[8]:
             frames = frame_counts(selected_records)
             frames_year = frame_counts_by_year(selected_records)
@@ -3084,7 +3108,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             )
             st.dataframe(frames_year, use_container_width=True)
 
-    if analysis_tabs[9].open or analysis_tabs[12].open:
+    if analysis_tabs[9].open:
         with analysis_tabs[9]:
             st.markdown("Red semántica local con comunidades y cubridor")
             st.caption(
@@ -3265,7 +3289,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 st.download_button("Descargar comparación cubridor semántico CSV", rows_to_csv(semantic_comparison_rows), "semantic_cover_methods.csv", "text/csv")
                 st.download_button("Descargar Pareto semántico CSV", rows_to_csv(semantic_pareto_rows), "semantic_cover_pareto.csv", "text/csv")
 
-    if analysis_tabs[10].open or analysis_tabs[12].open:
+    if analysis_tabs[10].open:
         with analysis_tabs[10]:
             st.markdown("Disección estructural de narrativas")
             st.caption(
@@ -3409,7 +3433,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 "application/json",
             )
 
-    if analysis_tabs[11].open or analysis_tabs[12].open:
+    if analysis_tabs[11].open:
         with analysis_tabs[11]:
             st.markdown("Sentimiento local por fuente y año")
             st.caption(
@@ -3552,9 +3576,10 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             }
             st.markdown("JSON único del análisis")
             st.caption("Este archivo fusiona registros filtrados, sentimiento, eventos, redes, grupos y cubridor para análisis posterior.")
+            json_bytes = json.dumps(unified_analysis, ensure_ascii=False, indent=2).encode("utf-8")
             st.download_button(
                 "Descargar JSON único enriquecido",
-                json.dumps(unified_analysis, ensure_ascii=False, indent=2).encode("utf-8"),
+                json_bytes,
                 "narrative_analysis_unified.json",
                 "application/json",
             )
@@ -3565,27 +3590,50 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 save_path = save_dir / "narrative_analysis_unified.json"
                 atomic_write(save_path, json.dumps(unified_analysis, ensure_ascii=False, indent=2), encoding='utf-8')
                 st.success(f"Guardado: {save_path}")
-            st.download_button("Descargar monogramas CSV", rows_to_csv(terms), "narrative_monograms.csv", "text/csv")
-            st.download_button("Descargar bigramas CSV", rows_to_csv(bigrams), "narrative_bigrams.csv", "text/csv")
-            st.download_button("Descargar trigramas CSV", rows_to_csv(trigrams), "narrative_trigrams.csv", "text/csv")
-            st.download_button("Descargar marcos CSV", rows_to_csv(frames), "narrative_frames.csv", "text/csv")
-            st.download_button("Descargar sentimiento documentos CSV", rows_to_csv(sentiment_rows), "sentiment_documents.csv", "text/csv")
-            st.download_button("Descargar sentimiento año-fuente CSV", rows_to_csv(sentiment_summary), "sentiment_by_year_source.csv", "text/csv")
-            st.download_button("Descargar eventos narrativos CSV", rows_to_csv(event_rows), "narrative_events.csv", "text/csv")
-            st.download_button("Descargar resumen eventos CSV", rows_to_csv(event_summary), "narrative_event_summary.csv", "text/csv")
-            st.download_button("Descargar actores CSV", rows_to_csv(actors), "narrative_actors.csv", "text/csv")
-            st.download_button("Descargar nodos red narrativa CSV", rows_to_csv(narrative_graph["nodes"]), "narrative_graph_nodes.csv", "text/csv")
-            st.download_button("Descargar aristas red narrativa CSV", rows_to_csv(narrative_graph["edges"]), "narrative_graph_edges.csv", "text/csv")
-            st.download_button("Descargar cubridor ponderado CSV", rows_to_csv(narrative_cover["selected_nodes"]), "weighted_node_cover.csv", "text/csv")
-            st.download_button("Descargar frente Pareto CSV", rows_to_csv(narrative_cover.get("pareto_front", [])), "weighted_node_cover_pareto.csv", "text/csv")
-            st.download_button("Descargar grupos de ideas CSV", rows_to_csv(group_rows), "idea_groups.csv", "text/csv")
-            st.download_button("Descargar matriz documento-grupo CSV", rows_to_csv(group_matrix), "idea_group_document_matrix.csv", "text/csv")
-            st.download_button("Descargar grupos adaptativos CSV", rows_to_csv(adaptive_groups), "adaptive_topic_groups.csv", "text/csv")
-            st.download_button("Descargar nodos grafo conocimiento CSV", rows_to_csv(knowledge_graph["nodes"]), "knowledge_graph_nodes.csv", "text/csv")
-            st.download_button("Descargar aristas grafo conocimiento CSV", rows_to_csv(knowledge_graph["edges"]), "knowledge_graph_edges.csv", "text/csv")
-            st.download_button("Descargar cobertura CSV", rows_to_csv(coverage), "corpus_coverage.csv", "text/csv")
-            st.download_button("Descargar nodos de red CSV", rows_to_csv(network["nodes"]), "semantic_network_nodes.csv", "text/csv")
-            st.download_button("Descargar aristas de red CSV", rows_to_csv(network["edges"]), "semantic_network_edges.csv", "text/csv")
+            csv_exports = [
+                ('Descargar monogramas CSV', 'narrative_monograms.csv', rows_to_csv(terms)),
+                ('Descargar bigramas CSV', 'narrative_bigrams.csv', rows_to_csv(bigrams)),
+                ('Descargar trigramas CSV', 'narrative_trigrams.csv', rows_to_csv(trigrams)),
+                ('Descargar marcos CSV', 'narrative_frames.csv', rows_to_csv(frames)),
+                ('Descargar sentimiento documentos CSV', 'sentiment_documents.csv', rows_to_csv(sentiment_rows)),
+                ('Descargar sentimiento año-fuente CSV', 'sentiment_by_year_source.csv', rows_to_csv(sentiment_summary)),
+                ('Descargar eventos narrativos CSV', 'narrative_events.csv', rows_to_csv(event_rows)),
+                ('Descargar resumen eventos CSV', 'narrative_event_summary.csv', rows_to_csv(event_summary)),
+                ('Descargar actores CSV', 'narrative_actors.csv', rows_to_csv(actors)),
+                ('Descargar nodos red narrativa CSV', 'narrative_graph_nodes.csv', rows_to_csv(narrative_graph['nodes'])),
+                ('Descargar aristas red narrativa CSV', 'narrative_graph_edges.csv', rows_to_csv(narrative_graph['edges'])),
+                ('Descargar cubridor ponderado CSV', 'weighted_node_cover.csv', rows_to_csv(narrative_cover['selected_nodes'])),
+                ('Descargar frente Pareto CSV', 'weighted_node_cover_pareto.csv', rows_to_csv(narrative_cover.get('pareto_front', []))),
+                ('Descargar grupos de ideas CSV', 'idea_groups.csv', rows_to_csv(group_rows)),
+                ('Descargar matriz documento-grupo CSV', 'idea_group_document_matrix.csv', rows_to_csv(group_matrix)),
+                ('Descargar grupos adaptativos CSV', 'adaptive_topic_groups.csv', rows_to_csv(adaptive_groups)),
+                ('Descargar nodos grafo conocimiento CSV', 'knowledge_graph_nodes.csv', rows_to_csv(knowledge_graph['nodes'])),
+                ('Descargar aristas grafo conocimiento CSV', 'knowledge_graph_edges.csv', rows_to_csv(knowledge_graph['edges'])),
+                ('Descargar cobertura CSV', 'corpus_coverage.csv', rows_to_csv(coverage)),
+                ('Descargar nodos de red CSV', 'semantic_network_nodes.csv', rows_to_csv(network['nodes'])),
+                ('Descargar aristas de red CSV', 'semantic_network_edges.csv', rows_to_csv(network['edges'])),
+            ]
+            for label, filename, content in csv_exports:
+                st.download_button(label, content, filename, "text/csv")
+            if st.button("Preparar ZIP de análisis con figuras PDF"):
+                from lexical_figures import analysis_zip, lexical_figure_files, network_figure_files
+
+                files = lexical_figure_files(terms, bigrams, trigrams, len(selected_records))
+                files.update(network_figure_files([
+                    ("red_narrativa", "Red narrativa", narrative_graph),
+                    ("grafo_conocimiento", "Grafo de conocimiento", knowledge_graph),
+                    ("red_semantica", "Red semántica", network),
+                    ("red_estructural", "Red estructural", structural_graph),
+                ]))
+                figures_only = {name: content for name, content in files.items()
+                                if name.startswith("figuras/")}
+                st.download_button("Descargar solo figuras PDF y PNG", analysis_zip(figures_only),
+                                   "SIAN_figuras.zip", "application/zip")
+                files["narrative_analysis_unified.json"] = json_bytes
+                files.update({f"datos/{filename}": content for _, filename, content in csv_exports})
+                st.download_button("Descargar ZIP de análisis con figuras PDF", analysis_zip(files),
+                                   "SIAN_analisis_con_figuras.zip", "application/zip")
+
 
 
 init_state()
