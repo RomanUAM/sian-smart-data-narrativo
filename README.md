@@ -81,3 +81,37 @@ AWS_SECRET_ACCESS_KEY = "CLAVE_SECRETA"
 ```
 
 El bucket debe existir y las credenciales deben permitir `s3:PutObject` y `s3:GetObject` sólo sobre el prefijo elegido. Activar versionado del bucket si se quieren conservar copias anteriores; la app actualiza el objeto de la ejecución. Las credenciales se pasan al trabajador independiente sin incluirse en las bases o respaldos. La interfaz muestra la fecha de la última copia externa confirmada y permite descargar la copia analizada. Sin Secrets configurados, esta función queda en modo local y no evita pérdidas por reinicio del servidor.
+
+## Ejecutar los agentes de SIAN
+
+El flujo **SIAN · análisis por lotes** ejecuta cuatro etapas en un runner de
+GitHub Actions. Importa y deduplica documentos, aplica el filtro léxico,
+calcula redes y cubridores, y guarda tablas, figuras y trazabilidad.
+
+1. En Settings → Secrets and variables → Actions, define `SIAN_CORPUS_URL`
+   con una URL HTTPS privada que permita descargar el JSON. Puede ser una URL
+   firmada y temporal. Conserva el corpus fuera del repositorio.
+2. Define `SIAN_RESULTS_PASSPHRASE` con una frase larga y aleatoria.
+3. En Actions, abre **SIAN · análisis por lotes** y selecciona **Run workflow**.
+4. Descarga el artefacto **SIAN-resultados-cifrados**, extrae
+   `SIAN_resultados.zip.gpg` y descífralo con GnuPG:
+
+   ```sh
+   gpg --output SIAN_resultados.zip --decrypt SIAN_resultados.zip.gpg
+   ```
+
+5. En [SIAN](https://sian-narrativa.streamlit.app/), activa **Consultar
+   resultados de los agentes** y abre el ZIP descifrado. Puedes navegar por
+   sus tablas y figuras. Los PDF están dentro del ZIP.
+
+El archivo descargado de GitHub contiene resultados cifrados. El corpus y
+la frase de cifrado se gestionan mediante secretos. El flujo usa 1,000
+evaluaciones por método con semilla 42. El manifiesto registra el SHA-256
+del corpus, la revisión de GitHub y los conteos de documentos y redes.
+El lote usa sus propios filtros de elegibilidad documentados en el código.
+
+Para ejecutar el mismo flujo en local:
+
+```sh
+python batch_analysis.py corpus.json SIAN_resultados.zip
+```

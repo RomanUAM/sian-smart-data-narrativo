@@ -3644,10 +3644,51 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
 
 
 
-init_state()
-drain_queue()
+def render_batch_results() -> None:
+    from zipfile import BadZipFile, ZipFile
+    from itertools import islice
+
+    st.subheader("Consultar resultados de los agentes")
+    st.caption("Carga el ZIP descifrado de GitHub Actions. Esta vista sólo lee resultados guardados.")
+    upload = st.file_uploader("ZIP de resultados de SIAN", type=["zip"], key="batch_results_zip")
+    if upload is None:
+        return
+    try:
+        with ZipFile(upload) as archive:
+            info = archive.getinfo("manifest.json")
+            if info.file_size > 64 * 1024:
+                raise ValueError("El manifiesto supera el tamaño admitido.")
+            manifest = json.loads(archive.read(info))
+            if not isinstance(manifest, dict) or manifest.get("format") != "sian-agent-results-v1":
+                raise ValueError("El ZIP no corresponde a una ejecución de los agentes de SIAN.")
+            st.metric("Documentos analizados", manifest.get("records_analyzed", "—"))
+            st.json(manifest, expanded=False)
+            entries = {item.filename: item for item in archive.infolist()
+                       if item.filename.startswith(("datos/", "figuras/"))
+                       and item.filename.endswith((".csv", ".png"))}
+            if entries:
+                name = st.selectbox("Tabla o figura", sorted(entries))
+                with archive.open(entries[name]) as member:
+                    if name.endswith(".png"):
+                        if entries[name].file_size > 5 * 1024 * 1024:
+                            raise ValueError("La figura supera el tamaño de vista previa.")
+                        st.image(member.read())
+                    else:
+                        import io
+                        with io.TextIOWrapper(member, encoding="utf-8", newline="") as stream:
+                            st.dataframe(list(islice(csv.DictReader(stream), 100)), hide_index=True)
+                        st.caption("Vista previa de hasta 100 filas. El ZIP contiene las tablas completas.")
+    except (BadZipFile, KeyError, ValueError, OSError, RuntimeError, csv.Error) as exc:
+        st.error(f"No se pudo abrir el ZIP de resultados: {exc}")
+
 
 st.title("SIAN · Sistema de Información y Análisis de Narrativas")
+if st.sidebar.toggle("Consultar resultados de los agentes"):
+    render_batch_results()
+    st.stop()
+
+init_state()
+drain_queue()
 st.caption(
     "Sistema local para recolectar fuentes públicas, balancear capas discursivas y diseccionar narrativas "
     "mediante grafos, Smart Data, proposiciones, marcos, deltas, silencios y trazabilidad técnica."
