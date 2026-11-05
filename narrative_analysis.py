@@ -33,7 +33,7 @@ STOPWORDS = {
     "tal", "pues", "entonces", "alguno", "algunos", "alguna", "algunas", "sido",
     "quien", "quienes", "menos", "dentro", "tener", "debe", "deben", "aqui",
     "ademas", "toda", "todas", "habia", "ello", "ahora", "nuestro", "nuestra",
-    "nuestros", "nuestras", "cuyo", "cuya", "cuyos", "cuyas", "aquel", "aquella",
+    "nuestros", "nuestras", "nosotros", "ustedes", "vosotros", "rapidamente", "cuyo", "cuya", "cuyos", "cuyas", "aquel", "aquella",
     # English
     "about", "above", "after", "again", "against", "all", "am", "an", "and", "any",
     "are", "as", "at", "be", "because", "been", "before", "being", "below", "between",
@@ -53,7 +53,7 @@ STOPWORDS = {
     "neither", "never", "nothing", "otherwise", "rather", "really", "since",
     "someone", "something", "sometimes", "still", "therefore", "though", "thus",
     "together", "toward", "towards", "upon", "whatever", "whenever", "within",
-    "without", "yet", "ourselves", "yourself", "yourselves", "cannot", "almost",
+    "without", "always", "often", "yet", "ourselves", "yourself", "yourselves", "cannot", "almost",
     # Corpus noise
     "vol", "issue", "eds", "isbn", "issn", "pp", "pag", "pags", "references", "bibliografia",
     "http", "https", "www", "com", "org", "doi", "journal", "news", "article", "said",
