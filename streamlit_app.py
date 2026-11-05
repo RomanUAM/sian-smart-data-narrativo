@@ -1485,17 +1485,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
-    analysis_view = st.radio(
-        "Módulo de análisis",
-        ["Frecuencias léxicas", "Conceptos detectados", "Análisis narrativo avanzado"],
-        horizontal=True,
-    )
-    st.caption(
-        "Frecuencias léxicas: monogramas, bigramas y trigramas. "
-        "Análisis narrativo avanzado: red de conocimiento, red de actores, "
-        "eventos y momentos narrativos, red semántica, sentimiento y métodos de cobertura."
-    )
-    if analysis_view == "Análisis narrativo avanzado":
+    if st.checkbox("Mostrar revisión de evidencia y afirmaciones"):
         rows = render_evidence_dashboard(rows)
     raw_rows = rows
     rows, duplicate_rows = deduplicate_rows_for_analysis(raw_rows)
@@ -1640,9 +1630,130 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         st.warning("Los filtros dejaron el corpus vacío.")
         return
 
-    if analysis_view == "Frecuencias léxicas":
-        lexical_view = st.radio("Tipo de frecuencia", ["Monogramas", "Bigramas", "Trigramas"], horizontal=True)
-        if lexical_view == "Monogramas":
+    analysis_tabs = st.tabs([
+        "Geolocalización",
+        "Eventos narrativos",
+        "Cubridor y métodos",
+        "Monogramas",
+        "Bigramas",
+        "Trigramas",
+        "Grupos de ideas",
+        "Grafo de conocimiento",
+        "Marcos narrativos",
+        "Red semántica",
+        "Disección estructural",
+        "Sentimiento",
+        "Exportar",
+        "Conceptos detectados",
+    ], key="sian_analysis_tabs", on_change="rerun")
+
+    if analysis_tabs[0].open:
+        with analysis_tabs[0]:
+            st.markdown("Geolocalización local e idioma")
+            st.caption("La localización se infiere localmente por dominio, país de fuente y menciones textuales. No usa geocodificación externa.")
+            lang_counts = count_rows(selected_records, ["analysis_language"])
+            loc_counts = count_rows(selected_records, ["localization"])
+            source_loc_counts = count_rows(selected_records, ["source_type", "localization"])
+            year_lang_counts = count_rows(selected_records, ["year", "analysis_language"])
+            year_loc_counts = count_rows(selected_records, ["year", "localization"])
+
+            left, right = st.columns(2)
+            with left:
+                st.markdown("Idiomas del corpus")
+                st.vega_lite_chart(
+                    lang_counts,
+                    {
+                        "mark": {"type": "bar", "tooltip": True},
+                        "encoding": {
+                            "x": {"field": "records", "type": "quantitative", "title": "Registros"},
+                            "y": {"field": "analysis_language", "type": "nominal", "sort": "-x", "title": "Idioma"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+            with right:
+                st.markdown("Localización respecto a México")
+                st.vega_lite_chart(
+                    loc_counts,
+                    {
+                        "mark": {"type": "bar", "tooltip": True},
+                        "encoding": {
+                            "x": {"field": "records", "type": "quantitative", "title": "Registros"},
+                            "y": {"field": "localization", "type": "nominal", "sort": "-x", "title": "Localización"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+
+            st.markdown("Tipo de fuente × localización")
+            st.vega_lite_chart(
+                source_loc_counts,
+                {
+                    "mark": {"type": "rect", "tooltip": True},
+                    "encoding": {
+                        "x": {"field": "source_type", "type": "nominal", "title": "Tipo de fuente"},
+                        "y": {"field": "localization", "type": "nominal", "title": "Localización"},
+                        "color": {"field": "records", "type": "quantitative", "title": "Registros"},
+                        "tooltip": [
+                            {"field": "source_type", "type": "nominal"},
+                            {"field": "localization", "type": "nominal"},
+                            {"field": "records", "type": "quantitative"},
+                        ],
+                    },
+                },
+                use_container_width=True,
+            )
+
+            left, right = st.columns(2)
+            with left:
+                st.markdown("Idioma por año")
+                st.vega_lite_chart(
+                    year_lang_counts,
+                    {
+                        "mark": {"type": "bar", "tooltip": True},
+                        "encoding": {
+                            "x": {"field": "year", "type": "ordinal", "title": "Año"},
+                            "y": {"field": "records", "type": "quantitative", "title": "Registros"},
+                            "color": {"field": "analysis_language", "type": "nominal", "title": "Idioma"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+            with right:
+                st.markdown("Localización por año")
+                st.vega_lite_chart(
+                    year_loc_counts,
+                    {
+                        "mark": {"type": "bar", "tooltip": True},
+                        "encoding": {
+                            "x": {"field": "year", "type": "ordinal", "title": "Año"},
+                            "y": {"field": "records", "type": "quantitative", "title": "Registros"},
+                            "color": {"field": "localization", "type": "nominal", "title": "Localización"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+
+            st.markdown("Auditoría de localización")
+            audit_rows = [
+                {
+                    "year": row.get("year"),
+                    "language": row.get("analysis_language"),
+                    "localization": row.get("localization"),
+                    "mexico_score": row.get("mexico_score"),
+                    "evidence": row.get("localization_evidence"),
+                    "medium": row.get("medium"),
+                    "title": row.get("title"),
+                    "url": row.get("url"),
+                }
+                for row in selected_records
+            ]
+            st.dataframe(audit_rows, use_container_width=True)
+
+        return
+
+    if analysis_tabs[3].open:
+        with analysis_tabs[3]:
             top_n = st.slider("Número de monogramas", 10, 100, 30, step=5)
             terms = pareto_terms(top_terms(selected_records, top_n=top_n, extra_stopwords=extra_stopwords))
             left, right = st.columns(2)
@@ -1690,7 +1801,10 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             if st.checkbox("Mostrar candidatas a palabras vacías"):
                 st.dataframe(stopword_candidates(selected_records, top_n=50), use_container_width=True)
 
-        if lexical_view == "Bigramas":
+        return
+
+    if analysis_tabs[4].open:
+        with analysis_tabs[4]:
             top_n_bigrams = st.slider("Número de bigramas", 10, 100, 30, step=5)
             bigrams = top_ngrams(selected_records, n=2, top_n=top_n_bigrams, extra_stopwords=extra_stopwords)
             st.markdown("Bigramas más frecuentes")
@@ -1707,7 +1821,10 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             )
             st.dataframe(bigrams, use_container_width=True)
 
-        if lexical_view == "Trigramas":
+        return
+
+    if analysis_tabs[5].open:
+        with analysis_tabs[5]:
             top_n_trigrams = st.slider("Número de trigramas", 10, 100, 30, step=5)
             trigrams = top_ngrams(selected_records, n=3, top_n=top_n_trigrams, extra_stopwords=extra_stopwords)
             st.markdown("Trigramas más frecuentes")
@@ -1724,47 +1841,50 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             )
             st.dataframe(trigrams, use_container_width=True)
 
+
+
         return
 
-    if analysis_view == "Conceptos detectados":
-        from collections import Counter
-        groups = idea_groups_for_records(selected_records)
-        documents = idea_group_document_matrix(selected_records, groups)
-        source_totals, period_totals = Counter(), Counter()
-        source_hits, period_hits = Counter(), Counter()
-        for record, document in zip(selected_records, documents):
-            document["document_id"] = record.get("document_id")
-            document["url"] = record.get("url")
-            info = record["record_information"]
-            source_info = info["publication_source"]
-            source = source_info.get("value") if source_info["state"] == "explicit" else None
-            date_info = info["publication_date"]
-            date = date_info.get("value") if date_info["state"] == "explicit" else None
-            year = date[:4] if date and date_precision(date) else None
-            for bucket, totals, hits in (
-                (source, source_totals, source_hits), (year, period_totals, period_hits),
+    if analysis_tabs[13].open:
+        with analysis_tabs[13]:
+            from collections import Counter
+            groups = idea_groups_for_records(selected_records)
+            documents = idea_group_document_matrix(selected_records, groups)
+            source_totals, period_totals = Counter(), Counter()
+            source_hits, period_hits = Counter(), Counter()
+            for record, document in zip(selected_records, documents):
+                document["document_id"] = record.get("document_id")
+                document["url"] = record.get("url")
+                info = record["record_information"]
+                source_info = info["publication_source"]
+                source = source_info.get("value") if source_info["state"] == "explicit" else None
+                date_info = info["publication_date"]
+                date = date_info.get("value") if date_info["state"] == "explicit" else None
+                year = date[:4] if date and date_precision(date) else None
+                for bucket, totals, hits in (
+                    (source, source_totals, source_hits), (year, period_totals, period_hits),
+                ):
+                    if bucket:
+                        totals[bucket] += 1
+                        for concept in groups:
+                            hits[bucket, concept] += int(document[concept] > 0)
+
+            st.caption("Coincidencias léxicas en los documentos filtrados. Cada celda cuenta coincidencias con los términos del concepto. Un cero indica que esos términos no aparecieron.")
+            st.markdown("Conceptos detectados por documento")
+            st.dataframe(documents, use_container_width=True)
+            for label, dimension, totals, hits in (
+                ("Conceptos detectados por fuente explícita", "fuente", source_totals, source_hits),
+                ("Conceptos detectados por año explícito", "año", period_totals, period_hits),
             ):
-                if bucket:
-                    totals[bucket] += 1
-                    for concept in groups:
-                        hits[bucket, concept] += int(document[concept] > 0)
-
-        st.caption("Coincidencias léxicas en los documentos filtrados. Cada celda cuenta coincidencias con los términos del concepto. Un cero indica que esos términos no aparecieron.")
-        st.markdown("Conceptos detectados por documento")
-        st.dataframe(documents, use_container_width=True)
-        for label, dimension, totals, hits in (
-            ("Conceptos detectados por fuente explícita", "fuente", source_totals, source_hits),
-            ("Conceptos detectados por año explícito", "año", period_totals, period_hits),
-        ):
-            st.markdown(label)
-            st.caption(f"Documentos con este metadato: {sum(totals.values())} de {len(documents)}.")
-            st.dataframe([
-                {dimension: bucket, "concepto": concept, "documentos_con_coincidencia": hits[bucket, concept],
-                 "documentos_analizados": total, "proporción": hits[bucket, concept] / total}
-                for bucket, total in sorted(totals.items()) for concept in groups
-            ], use_container_width=True)
-        st.info("Las posiciones de actores y las relaciones afirmadas requieren citas atribuidas y revisión. Se consultan en el análisis narrativo avanzado.")
-        return
+                st.markdown(label)
+                st.caption(f"Documentos con este metadato: {sum(totals.values())} de {len(documents)}.")
+                st.dataframe([
+                    {dimension: bucket, "concepto": concept, "documentos_con_coincidencia": hits[bucket, concept],
+                     "documentos_analizados": total, "proporción": hits[bucket, concept] / total}
+                    for bucket, total in sorted(totals.items()) for concept in groups
+                ], use_container_width=True)
+            st.info("Las posiciones de actores y las relaciones afirmadas requieren citas atribuidas y revisión. Se consultan en el análisis narrativo avanzado.")
+            return
 
     with st.expander("Auditoría del corpus: por qué el número puede bajar tanto", expanded=True):
         st.warning(
@@ -1832,121 +1952,6 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         f"{name}: {', '.join(terms)}"
         for name, terms in default_groups.items()
     )
-
-    analysis_tabs = st.tabs([
-        "Geolocalización",
-        "Eventos narrativos",
-        "Cubridor y métodos",
-        "Grupos de ideas",
-        "Grafo de conocimiento",
-        "Marcos narrativos",
-        "Red semántica",
-        "Disección estructural",
-        "Sentimiento",
-        "Exportar",
-    ])
-
-    with analysis_tabs[0]:
-        st.markdown("Geolocalización local e idioma")
-        st.caption("La localización se infiere localmente por dominio, país de fuente y menciones textuales. No usa geocodificación externa.")
-        lang_counts = count_rows(selected_records, ["analysis_language"])
-        loc_counts = count_rows(selected_records, ["localization"])
-        source_loc_counts = count_rows(selected_records, ["source_type", "localization"])
-        year_lang_counts = count_rows(selected_records, ["year", "analysis_language"])
-        year_loc_counts = count_rows(selected_records, ["year", "localization"])
-
-        left, right = st.columns(2)
-        with left:
-            st.markdown("Idiomas del corpus")
-            st.vega_lite_chart(
-                lang_counts,
-                {
-                    "mark": {"type": "bar", "tooltip": True},
-                    "encoding": {
-                        "x": {"field": "records", "type": "quantitative", "title": "Registros"},
-                        "y": {"field": "analysis_language", "type": "nominal", "sort": "-x", "title": "Idioma"},
-                    },
-                },
-                use_container_width=True,
-            )
-        with right:
-            st.markdown("Localización respecto a México")
-            st.vega_lite_chart(
-                loc_counts,
-                {
-                    "mark": {"type": "bar", "tooltip": True},
-                    "encoding": {
-                        "x": {"field": "records", "type": "quantitative", "title": "Registros"},
-                        "y": {"field": "localization", "type": "nominal", "sort": "-x", "title": "Localización"},
-                    },
-                },
-                use_container_width=True,
-            )
-
-        st.markdown("Tipo de fuente × localización")
-        st.vega_lite_chart(
-            source_loc_counts,
-            {
-                "mark": {"type": "rect", "tooltip": True},
-                "encoding": {
-                    "x": {"field": "source_type", "type": "nominal", "title": "Tipo de fuente"},
-                    "y": {"field": "localization", "type": "nominal", "title": "Localización"},
-                    "color": {"field": "records", "type": "quantitative", "title": "Registros"},
-                    "tooltip": [
-                        {"field": "source_type", "type": "nominal"},
-                        {"field": "localization", "type": "nominal"},
-                        {"field": "records", "type": "quantitative"},
-                    ],
-                },
-            },
-            use_container_width=True,
-        )
-
-        left, right = st.columns(2)
-        with left:
-            st.markdown("Idioma por año")
-            st.vega_lite_chart(
-                year_lang_counts,
-                {
-                    "mark": {"type": "bar", "tooltip": True},
-                    "encoding": {
-                        "x": {"field": "year", "type": "ordinal", "title": "Año"},
-                        "y": {"field": "records", "type": "quantitative", "title": "Registros"},
-                        "color": {"field": "analysis_language", "type": "nominal", "title": "Idioma"},
-                    },
-                },
-                use_container_width=True,
-            )
-        with right:
-            st.markdown("Localización por año")
-            st.vega_lite_chart(
-                year_loc_counts,
-                {
-                    "mark": {"type": "bar", "tooltip": True},
-                    "encoding": {
-                        "x": {"field": "year", "type": "ordinal", "title": "Año"},
-                        "y": {"field": "records", "type": "quantitative", "title": "Registros"},
-                        "color": {"field": "localization", "type": "nominal", "title": "Localización"},
-                    },
-                },
-                use_container_width=True,
-            )
-
-        st.markdown("Auditoría de localización")
-        audit_rows = [
-            {
-                "year": row.get("year"),
-                "language": row.get("analysis_language"),
-                "localization": row.get("localization"),
-                "mexico_score": row.get("mexico_score"),
-                "evidence": row.get("localization_evidence"),
-                "medium": row.get("medium"),
-                "title": row.get("title"),
-                "url": row.get("url"),
-            }
-            for row in selected_records
-        ]
-        st.dataframe(audit_rows, use_container_width=True)
 
     with analysis_tabs[1]:
         st.markdown("Extracción local de estructura narrativa")
@@ -2799,7 +2804,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             st.download_button("Descargar frente Pareto aceptable CSV", rows_to_csv(acceptable_pareto_rows), "acceptable_pareto_front.csv", "text/csv")
             st.download_button("Descargar nodos seleccionados CSV", rows_to_csv(selected_cover["selected_nodes"]), "selected_cover_nodes.csv", "text/csv")
 
-    with analysis_tabs[3]:
+    with analysis_tabs[6]:
         st.markdown("Grupos de ideas / tópicos locales")
         st.caption("Los grupos se calculan por diccionarios editables, pero pueden inicializarse desde comunidades y nodos centrales del grafo de conocimiento.")
         suggested_group_graph = build_knowledge_graph(
@@ -2871,7 +2876,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.markdown("Matriz documento × grupo de ideas")
         st.dataframe(matrix_rows, use_container_width=True)
 
-    with analysis_tabs[4]:
+    with analysis_tabs[7]:
         st.markdown("Grafo de conocimiento local")
         st.caption("Incluye monogramas, bigramas, trigramas, fuentes, años, idioma y localización. Los grupos adaptativos salen de comunidades del grafo.")
         c1, c2, c3 = st.columns(3)
@@ -3031,7 +3036,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.dataframe(knowledge_graph["communities"], use_container_width=True)
         st.caption("Estos grupos cambian con el tópico, filtros, stopwords y umbrales. Úsalos como propuesta inicial y luego edita el diccionario en 'Grupos de ideas'.")
 
-    with analysis_tabs[5]:
+    with analysis_tabs[8]:
         frames = frame_counts(selected_records)
         frames_year = frame_counts_by_year(selected_records)
         st.markdown("Marcos narrativos detectados por diccionario local")
@@ -3070,7 +3075,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         )
         st.dataframe(frames_year, use_container_width=True)
 
-    with analysis_tabs[6]:
+    with analysis_tabs[9]:
         st.markdown("Red semántica local con comunidades y cubridor")
         st.caption(
             "Construye una red de coocurrencia limpia, detecta comunidades con Louvain/modularidad y aplica el mismo modelo de cubridor multiobjetivo."
@@ -3250,7 +3255,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             st.download_button("Descargar comparación cubridor semántico CSV", rows_to_csv(semantic_comparison_rows), "semantic_cover_methods.csv", "text/csv")
             st.download_button("Descargar Pareto semántico CSV", rows_to_csv(semantic_pareto_rows), "semantic_cover_pareto.csv", "text/csv")
 
-    with analysis_tabs[7]:
+    with analysis_tabs[10]:
         st.markdown("Disección estructural de narrativas")
         st.caption(
             "Esta capa no afirma verdad judicial ni psicológica. Produce indicadores locales: "
@@ -3393,7 +3398,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             "application/json",
         )
 
-    with analysis_tabs[8]:
+    with analysis_tabs[11]:
         st.markdown("Sentimiento local por fuente y año")
         st.caption(
             "Análisis léxico local bilingüe. Es exploratorio y auditable: no usa LLM ni servicios externos. "
@@ -3466,7 +3471,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.download_button("Descargar sentimiento por documento CSV", rows_to_csv(sentiment_rows), "sentiment_documents.csv", "text/csv")
         st.download_button("Descargar sentimiento por año/fuente CSV", rows_to_csv(sentiment_summary), "sentiment_by_year_source.csv", "text/csv")
 
-    with analysis_tabs[9]:
+    with analysis_tabs[12]:
         terms = pareto_terms(top_terms(selected_records, top_n=100, extra_stopwords=extra_stopwords))
         bigrams = top_ngrams(selected_records, n=2, top_n=100, extra_stopwords=extra_stopwords)
         trigrams = top_ngrams(selected_records, n=3, top_n=100, extra_stopwords=extra_stopwords)
