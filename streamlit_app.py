@@ -4133,7 +4133,7 @@ def corpus_audit_rows(rows: list[dict]) -> list[dict]:
     audit.extend({"dimension": "source_type", "value": key, "records": value} for key, value in type_counts.most_common())
     audit.extend({"dimension": "source_api", "value": key, "records": value} for key, value in api_counts.most_common())
     audit.extend(
-        {"dimension": "year", "value": key, "records": value}
+        {"dimension": "year", "value": str(key), "records": value}
         for key, value in sorted(year_counts.items(), key=lambda item: mixed_sort_key(item[0]))
     )
     return audit
