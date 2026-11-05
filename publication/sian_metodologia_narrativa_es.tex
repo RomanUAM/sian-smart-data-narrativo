@@ -11,7 +11,7 @@
 
 \title{SIAN: metodología para construir y analizar corpus narrativos con datos públicos}
 \author{Documento de trabajo para revisión editorial}
-\date{29 de julio de 2026}
+\date{2026-11-05}
 
 \begin{document}
 \maketitle
@@ -101,6 +101,17 @@ El sistema no garantiza que existan 50 noticias, 50 artículos o 50 comentarios 
 \section{Conclusión}
 
 SIAN propone una metodología reproducible para pasar de textos dispersos a un corpus narrativo analizable. Su fortaleza no está en prometer automatización total, sino en combinar extracción local, trazabilidad, balance de fuentes, redes complejas y revisión humana. Para publicación, el punto crítico será demostrar que el corpus es suficiente y balanceado para la pregunta cultural planteada.
+
+
+\section{Ejecución directa y análisis por lotes}
+SIAN ofrece dos entradas. La recolección construye un corpus a partir de un plan de búsqueda. Si ya existe una base JSON o JSONL, la opción \emph{Analizar una base existente} pasa directamente a las vistas de análisis. Para corpus grandes, el flujo de GitHub Actions ejecuta cuatro etapas fuera de Streamlit: ingesta y auditoría, análisis léxico, redes y optimización, y análisis descriptivo y exportación. El visor sólo abre el ZIP resultante. El corpus se obtiene mediante una URL privada y el artefacto remoto se cifra.
+
+La normalización léxica convierte a minúsculas, descompone Unicode con NFKD, retira marcas combinantes y separa puntuación, guiones y guiones bajos. Después filtra palabras vacías en inglés y español y unifica variantes declaradas, como \emph{tatuajes} y \emph{tatuaje}. Los n-gramas se forman sobre la secuencia de términos retenidos. El texto fuente conserva su ortografía y se usa para citas. El clasificador de sentimiento conserva negaciones e intensificadores en su propia secuencia de palabras.
+
+El ZIP incluye frecuencias y flor léxica, actores y eventos, cronología, marcos, grupos de ideas, matrices por documento y fuente, sentimiento, trazabilidad, evidencia y Núcleo Smart Data. Incluye redes narrativa, semántica, de conocimiento y estructural. Las vistas gráficas de red resumen las aristas principales y las tablas guardan la red completa. Las relaciones basadas en evidencia requieren revisión humana.
+
+\subsection{Modelo de cubrimiento}
+Sea $x_i$ el indicador de selección del nodo $i$ y $r_{ij}$ el indicador de que se pierde la arista $(i,j)$ al retirar los nodos seleccionados. Se imponen $r_{ij}\ge x_i$, $r_{ij}\ge x_j$ y $r_{ij}\le x_i+x_j$. El modelo minimiza el número de nodos seleccionados y el peso de las aristas perdidas, y maximiza el peso de los nodos seleccionados. Los tres objetivos se reportan como proporciones de sus totales. Las restricciones lineales se almacenan en matrices dispersas. Glotón por barrido, MOEA, MOSA y MMC multiobjetivo comparten presupuesto de evaluaciones y semilla en el lote. El manifiesto identifica los parámetros, el hash del corpus y la revisión de código cuando se ejecuta en GitHub.
 
 \begin{thebibliography}{9}
 \bibitem{contactos625}

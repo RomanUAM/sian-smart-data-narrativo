@@ -10,7 +10,7 @@
 
 \title{SIAN: a local smart-data workflow for narrative analysis}
 \author{Working paper for methodological review}
-\date{July 29, 2026}
+\date{2026-11-05}
 
 \begin{document}
 \maketitle
@@ -74,6 +74,17 @@ The multiobjective model selects a compact set of concepts that covers narrative
 \section{Limits}
 
 The system can try to obtain a minimum number of records per source type and year, but it cannot honestly guarantee that such records exist or are legally accessible. It must report coverage gaps instead of hiding them. This is essential for publication.
+
+
+\section{Direct input and batch analysis}
+SIAN has two input paths. Collection builds a corpus from a search plan. If a JSON or JSONL corpus already exists, \emph{Analyze an existing corpus} opens the analysis views directly. For large corpora, the GitHub Actions workflow runs four stages outside Streamlit: ingestion and audit, lexical analysis, networks and optimization, and descriptive analysis and export. The viewer reads the resulting ZIP. A private URL supplies the corpus, and the remote artifact is encrypted.
+
+Lexical normalization lowercases text, decomposes Unicode with NFKD, removes combining marks, and separates punctuation, hyphens and underscores. It then filters Spanish and English stopwords and merges declared variants, such as \emph{tatuajes} and \emph{tatuaje}. N-grams are consecutive terms in the retained sequence. Source spelling remains available for quotations. Sentiment analysis retains negators and intensifiers in its own token sequence.
+
+The ZIP contains frequencies and the lexical flower, actors and events, a timeline, frames, idea groups, document and source matrices, sentiment, traceability, evidence and the Smart Data Nucleus. It includes narrative, semantic, knowledge and structural networks. Network figures show a subset of the strongest edges, while tables retain the full networks. Evidence-based relations require human review.
+
+\subsection{Cover model}
+Let $x_i$ indicate selection of node $i$ and $r_{ij}$ indicate the loss of edge $(i,j)$ after removing selected nodes. The model imposes $r_{ij}\ge x_i$, $r_{ij}\ge x_j$ and $r_{ij}\le x_i+x_j$. It minimizes the number of selected nodes and lost edge weight, and maximizes selected node weight. The three objectives are reported as shares of their respective totals. Linear constraints are stored in sparse matrices. Weighted greedy sweep, MOEA, MOSA and multiobjective MMC use a common evaluation budget and seed. The manifest records the parameters, corpus hash and code revision when the workflow runs on GitHub.
 
 \begin{thebibliography}{9}
 \bibitem{contactos625}

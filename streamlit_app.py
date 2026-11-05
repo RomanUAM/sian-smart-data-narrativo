@@ -25,6 +25,9 @@ import html as html_lib
 import streamlit as st
 import streamlit.components.v1 as components
 
+from descriptive_analysis import (normalize_local, row_source_type, sentiment_for_text,
+                                  sentiment_document_rows, sentiment_by_year_source, narrative_timeline_rows)
+
 from evidence_model import (normalize_record, coverage_report, descriptive_models, metadata_audit_rows, date_precision,
                             apply_reviews, ANALYSIS_LABELS)
 
@@ -509,16 +512,6 @@ def apply_actor_validations(event_rows: list[dict], validations: dict) -> list[d
     return rows
 
 
-def row_source_type(row: dict) -> str:
-    if row.get("source_type"):
-        return row.get("source_type", "other")
-    source_type, _, _ = classify_source_type(
-        article={},
-        url=row.get("url", ""),
-        medium=row.get("medium", ""),
-        title=row.get("title", ""),
-    )
-    return source_type
 
 
 def row_evidence(row: dict) -> tuple[str, int]:
@@ -727,120 +720,14 @@ def corpus_social_balance_diagnostic(rows: list[dict]) -> dict:
     }
 
 
-POSITIVE_SENTIMENT_TERMS = {
-    "aceptacion", "aceptación", "aceptado", "admiracion", "admiración", "alegria", "alegría",
-    "apoyo", "atractivo", "autonomia", "autonomía", "belleza", "beneficio", "bienestar",
-    "celebracion", "celebración", "confianza", "creatividad", "cuidado", "deseable",
-    "digno", "empoderamiento", "expresion", "expresión", "favorable", "feliz", "identidad",
-    "inclusion", "inclusión", "libertad", "mejora", "orgullo", "positivo", "reconocimiento",
-    "respeto", "seguro", "solidaridad", "valor", "valioso",
-    "acceptance", "accepted", "admiration", "autonomy", "beautiful", "beauty", "benefit",
-    "care", "celebration", "confidence", "creative", "creativity", "desirable", "empowerment",
-    "expression", "freedom", "happy", "improvement", "positive",
-    "pride", "recognition", "respect", "safe", "solidarity", "trust", "valuable", "wellbeing",
-}
-
-NEGATIVE_SENTIMENT_TERMS = {
-    "abuso", "alarma", "alergia", "amenaza", "arrepentimiento", "castigo", "conflicto",
-    "contagio", "controversia", "crimen", "critica", "crítica", "daño", "delito",
-    "desconfianza", "discriminacion", "discriminación", "dolor", "enfermedad", "error",
-    "estigma", "exclusion", "exclusión", "fracaso", "ilegal", "infeccion", "infección",
-    "miedo", "negativo", "peligro", "prejuicio", "problema", "rechazo", "riesgo",
-    "sancion", "sanción", "violencia", "vulnerabilidad",
-    "abuse", "alarm", "allergy", "attack", "concern", "conflict", "controversy", "crime",
-    "criticism", "damage", "danger", "disease", "discrimination", "failure", "fear", "harm", "illegal", "infection", "negative", "pain", "prejudice",
-    "problem", "rejection", "regret", "risk", "stigma", "threat", "violence", "vulnerability",
-}
-
-NEGATION_TERMS = {"no", "not", "never", "nunca", "sin", "without", "ni"}
-INTENSIFIER_TERMS = {"muy", "very", "bastante", "really", "extremely", "sumamente", "altamente"}
 
 
-def sentiment_for_text(text: str, extra_positive: list[str] | None = None, extra_negative: list[str] | None = None) -> dict:
-    tokens = tokenize(text or "", extra_stopwords=[])
-    positive_terms = {normalize_local(term) for term in [*POSITIVE_SENTIMENT_TERMS, *(extra_positive or [])]}
-    negative_terms = {normalize_local(term) for term in [*NEGATIVE_SENTIMENT_TERMS, *(extra_negative or [])]}
-    negations = {normalize_local(term) for term in NEGATION_TERMS}
-    intensifiers = {normalize_local(term) for term in INTENSIFIER_TERMS}
-    positive_hits = 0.0
-    negative_hits = 0.0
-    hit_terms: list[str] = []
-    for index, token in enumerate(tokens):
-        normalized = normalize_local(token)
-        if normalized not in positive_terms and normalized not in negative_terms:
-            continue
-        window = [normalize_local(item) for item in tokens[max(0, index - 3):index]]
-        multiplier = 1.5 if any(item in intensifiers for item in window) else 1.0
-        inverted = any(item in negations for item in window)
-        is_positive = normalized in positive_terms
-        if inverted:
-            is_positive = not is_positive
-        if is_positive:
-            positive_hits += multiplier
-        else:
-            negative_hits += multiplier
-        hit_terms.append(token)
-    denominator = positive_hits + negative_hits
-    score = 0.0 if denominator == 0 else (positive_hits - negative_hits) / denominator
-    if score >= 0.15:
-        label = "positive"
-    elif score <= -0.15:
-        label = "negative"
-    else:
-        label = "neutral_or_mixed"
-    return {
-        "sentiment_score": round(score, 5),
-        "positive_hits": round(positive_hits, 3),
-        "negative_hits": round(negative_hits, 3),
-        "sentiment_label": label,
-        "sentiment_terms": ", ".join(hit_terms[:40]),
-    }
 
 
-def sentiment_document_rows(rows: list[dict], extra_positive: list[str] | None = None, extra_negative: list[str] | None = None) -> list[dict]:
-    output = []
-    for row in rows:
-        text = " ".join(
-            str(part or "")
-            for part in [row.get("title", ""), row.get("text_normalized") or row.get("text_clean") or ""]
-        )
-        sentiment = sentiment_for_text(text, extra_positive=extra_positive, extra_negative=extra_negative)
-        output.append(
-            {
-                "year": row.get("year"),
-                "source_type": row_source_type(row),
-                "medium": row.get("medium") or "unknown",
-                "title": row.get("title", ""),
-                "url": row.get("url", ""),
-                **sentiment,
-            }
-        )
-    return output
 
 
-def sentiment_by_year_source(rows: list[dict]) -> list[dict]:
-    grouped: dict[tuple[int, str], list[float]] = defaultdict(list)
-    for row in rows:
-        year = row.get("year")
-        if not str(year).isdigit():
-            continue
-        grouped[(int(year), str(row.get("source_type") or "other"))].append(float(row.get("sentiment_score") or 0))
-    output = []
-    for (year, source_type), values in sorted(grouped.items()):
-        mean_value = sum(values) / max(1, len(values))
-        variance = sum((value - mean_value) ** 2 for value in values) / max(1, len(values))
-        output.append(
-            {
-                "year": year,
-                "source_type": source_type,
-                "documents": len(values),
-                "mean_sentiment": round(mean_value, 5),
-                "sentiment_variance": round(variance, 5),
-                "sentiment_std": round(math.sqrt(variance), 5),
-                "radial_value_0_1": round((mean_value + 1.0) / 2.0, 5),
-            }
-        )
-    return output
+
+
 
 
 def sentiment_radar_svg(rows: list[dict], year: int, source_order: list[str]) -> str:
@@ -1058,33 +945,6 @@ def narrative_core_metrics(records: list[dict], event_rows: list[dict], extra_st
     }
 
 
-def narrative_timeline_rows(records: list[dict], event_rows: list[dict], extra_stopwords: list[str]) -> list[dict]:
-    event_by_key = {row.get("doc_key"): row for row in event_rows}
-    grouped: dict[tuple[int, str], list[dict]] = defaultdict(list)
-    for row in records:
-        if not str(row.get("year", "")).isdigit():
-            continue
-        grouped[(int(row.get("year")), row_source_type(row))].append(row)
-    timeline = []
-    for (year, source_type), rows in sorted(grouped.items()):
-        texts = " ".join((row.get("text_normalized") or row.get("text_clean") or row.get("title") or "") for row in rows)
-        top_terms_row = top_terms(rows, top_n=5, extra_stopwords=extra_stopwords)
-        related_events = [event_by_key.get(row.get("url") or f"{row.get('year')}|{row.get('medium')}|{row.get('title')}") for row in rows]
-        related_events = [row for row in related_events if row]
-        timeline.append(
-            {
-                "year": year,
-                "source_type": source_type,
-                "documents": len(rows),
-                "sources": len({row.get("medium") or "unknown" for row in rows}),
-                "top_terms": ", ".join(row["term"] for row in top_terms_row),
-                "conflict_docs": sum(1 for row in related_events if row.get("conflict")),
-                "change_docs": sum(1 for row in related_events if row.get("turning_point")),
-                "consequence_docs": sum(1 for row in related_events if row.get("consequences")),
-                "mean_text_length": round(sum(len(row.get("text_normalized") or row.get("text_clean") or "") for row in rows) / max(1, len(rows)), 1),
-            }
-        )
-    return timeline
 
 
 def local_query_rows(records: list[dict], query_text: str, extra_stopwords: list[str], limit: int = 30) -> list[dict]:
@@ -3688,7 +3548,6 @@ if st.sidebar.toggle("Consultar resultados de los agentes"):
     st.stop()
 
 init_state()
-drain_queue()
 st.caption(
     "Sistema local para recolectar fuentes públicas, balancear capas discursivas y diseccionar narrativas "
     "mediante grafos, Smart Data, proposiciones, marcos, deltas, silencios y trazabilidad técnica."
@@ -4118,10 +3977,6 @@ def merge_unique(items: list[str]) -> list[str]:
     return output
 
 
-def normalize_local(value: str) -> str:
-    table = str.maketrans("áéíóúüñÁÉÍÓÚÜÑ", "aeiouunAEIOUUN")
-    value = (value or "").lower().translate(table)
-    return " ".join(value.split())
 
 
 def exclude_records_for_analysis(
@@ -5353,6 +5208,34 @@ def graph_structural_summary(graph: dict) -> list[dict]:
         if key in graph.get("stats", {}):
             rows.append({"metric": key, "value": graph["stats"][key]})
     return rows
+
+if st.sidebar.toggle("Analizar una base existente"):
+    from corpus_contract import merge_rows
+
+    init_state()
+    st.subheader("Análisis directo de una base")
+    st.caption("Carga una base JSON o JSONL. Esta ruta abre el análisis local y omite la búsqueda.")
+    corpus = st.file_uploader("Base existente", type=["json", "jsonl"], key="direct_corpus")
+    if st.button("Abrir base en el análisis", disabled=corpus is None):
+        try:
+            rows = merge_rows(iter_corpus_upload(corpus.getvalue(), corpus.name))
+            if not rows:
+                raise ValueError("La base no contiene registros válidos.")
+            st.session_state.direct_corpus_rows = rows
+        except (ValueError, OSError) as exc:
+            st.error(f"No se pudo abrir la base: {exc}")
+    if st.session_state.get("direct_corpus_rows"):
+        st.metric("Registros de la base", len(st.session_state.direct_corpus_rows))
+        # Use the existing analysis views without replacing the collection session.
+        previous_rows = st.session_state.spider_rows
+        st.session_state.spider_rows = st.session_state.direct_corpus_rows
+        try:
+            render_analysis_tab("news_output")
+        finally:
+            st.session_state.spider_rows = previous_rows
+    st.stop()
+
+drain_queue()
 
 with st.sidebar:
     st.header("Parámetros")

@@ -8,6 +8,7 @@ import json
 import math
 import random
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import combinations
@@ -446,7 +447,8 @@ def save_records_json(records: list[dict], output_dir: str | Path) -> None:
 
 
 def normalize_token_text(text: str) -> str:
-    return (text or "").lower().translate(str.maketrans("áéíóúüñ", "aeiouun"))
+    decomposed = unicodedata.normalize("NFKD", (text or "").lower())
+    return "".join(char for char in decomposed if not unicodedata.combining(char))
 
 
 INSTITUTIONAL_BOILERPLATE = re.compile(
@@ -457,7 +459,7 @@ TOKEN_ALIASES = {"tatuajes": "tatuaje"}
 
 def tokenize(text: str, extra_stopwords: Iterable[str] | None = None) -> list[str]:
     text = INSTITUTIONAL_BOILERPLATE.sub(" ", normalize_token_text(text))
-    tokens = re.findall(r"\b[a-z][a-z0-9_-]{2,}\b", text)
+    tokens = re.findall(r"\b[a-z][a-z0-9]{2,}\b", text.replace("_", " "))
     stops = {normalize_token_text(stop).strip() for stop in STOPWORDS}
     stops.update(normalize_token_text(s).strip() for s in (extra_stopwords or []) if s.strip())
     stops = {TOKEN_ALIASES.get(stop, stop) for stop in stops}

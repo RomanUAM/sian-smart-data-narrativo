@@ -11,9 +11,14 @@ from pathlib import Path
 import zipfile
 
 from corpus_contract import merge_rows
+from descriptive_analysis import narrative_timeline_rows, sentiment_document_rows, sentiment_by_year_source
+from evidence_model import descriptive_models
 from lexical_figures import lexical_figure_files, network_figure_files
 import narrative_analysis as na
-from structural_narrative import extract_structural_propositions, build_structural_influence_graph
+from structural_narrative import (
+    extract_structural_propositions, build_structural_influence_graph, structural_summary,
+    smart_data_nucleus, technical_traceability_rows,
+)
 from web_corpus_io import iter_corpus_upload
 
 
@@ -71,19 +76,44 @@ def run(corpus, output, budget, seed):
                     allowed_node_types=["actor", "narrative_stage", "narrative_flow",
                                         "source", "source_type", "document"])
               for solve in solvers] if narrative["edges"] else []
-    print("4/4 Exportación", flush=True)
+    print("4/4 Análisis descriptivo y exportación", flush=True)
+    sentiment = sentiment_document_rows(records)
+    nucleus = smart_data_nucleus(records, expected_topics=[row["term"] for row in terms[:10]])
+    evidence = descriptive_models(records)
     manifest = {
         "format": "sian-agent-results-v1", "generated_at": datetime.now(timezone.utc).isoformat(),
         "revision": os.getenv("GITHUB_SHA"), "corpus_sha256": fingerprint,
         "evaluation_budget": budget, "seed": seed, **audit,
+        "lexical_normalization": "lowercase, Unicode NFKD, remove combining marks, bilingual stopwords",
+        "ngram_definition": "consecutive terms after filtering",
         "networks": {name: {"nodes": len(graph["nodes"]), "edges": len(graph["edges"])}
                      for name, _, graph in networks},
     }
     tables = {"monogramas": terms, "bigramas": bigrams, "trigramas": trigrams,
               "eventos": events, "proposiciones": propositions,
-              "cubridor": [cover["stats"] for cover in covers]}
+              "cubridor": [cover["stats"] for cover in covers],
+              "actores": na.actor_counts(events),
+              "eventos_resumen": na.narrative_event_summary(events),
+              "cronologia": narrative_timeline_rows(records, events, []),
+              "marcos": na.frame_counts(records),
+              "marcos_por_anio": na.frame_counts_by_year(records),
+              "grupos": na.idea_group_counts(records),
+              "grupos_por_anio": na.idea_group_counts_by_year(records),
+              "matriz_grupos_documentos": na.idea_group_document_matrix(records),
+              "matriz_termino_fuente": na.ngram_dimension_matrix(records),
+              "grupos_adaptativos": na.adaptive_topic_groups_from_graph(networks[1][2]),
+              "sentimiento_documentos": sentiment,
+              "sentimiento_anio_fuente": sentiment_by_year_source(sentiment),
+              "estructura_resumen": structural_summary(propositions),
+              "trazabilidad": technical_traceability_rows(records),
+              "cartografia_fuentes": nucleus["cartography"]["sources"],
+              "marcos_argumentales": nucleus["frames"],
+              "cambios_temporales": nucleus["temporal_deltas"],
+              "silencios": nucleus["silence_alerts"]}
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
+        archive.writestr("evidencia.json", json.dumps(evidence, ensure_ascii=False, default=str))
+        archive.writestr("nucleo_smart_data.json", json.dumps(nucleus, ensure_ascii=False, default=str))
         archive.writestr("optimizacion.json", json.dumps(covers, ensure_ascii=False, default=str))
         for name, rows in tables.items():
             archive.writestr(f"datos/{name}.csv", csv_bytes(rows))
