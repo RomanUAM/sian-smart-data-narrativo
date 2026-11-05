@@ -1825,6 +1825,28 @@ def cover_problem_signature(problem: dict, max_nodes: int, purpose: str = "") ->
     )
 
 
+def _removal_lp_constraints(node_index, edges, max_nodes, min_nodes):
+    from scipy.sparse import csr_matrix
+
+    n = len(node_index)
+    indices = list(range(n)) * 2
+    values = [1.0] * n + [-1.0] * n
+    offsets = [0, n, 2 * n]
+    limits = [float(max_nodes), -float(min_nodes)]
+    for edge_index, edge in enumerate(edges):
+        source, target = edge.get("source"), edge.get("target")
+        if source not in node_index or target not in node_index:
+            continue
+        r, i, j = n + edge_index, node_index[source], node_index[target]
+        for coefficients in ({i: 1.0, r: -1.0}, {j: 1.0, r: -1.0},
+                             {r: 1.0, i: -1.0, j: -1.0}):
+            indices.extend(coefficients)
+            values.extend(coefficients.values())
+            offsets.append(len(indices))
+            limits.append(0.0)
+    return csr_matrix((values, indices, offsets), shape=(len(limits), n + len(edges))), limits
+
+
 def relaxed_lp_reference_points(problem: dict, max_nodes: int) -> dict:
     """Compute ideal/nadir utility anchors from a mono-objective LP relaxation.
 
@@ -1862,43 +1884,7 @@ def relaxed_lp_reference_points(problem: dict, max_nodes: int) -> dict:
 
         variable_count = n + m
         bounds = [(0.0, 1.0)] * variable_count
-        a_ub = []
-        b_ub = []
-        row = [0.0] * variable_count
-        for index in range(n):
-            row[index] = 1.0
-        a_ub.append(row)
-        b_ub.append(float(max_nodes))
-        row = [0.0] * variable_count
-        for index in range(n):
-            row[index] = -1.0
-        a_ub.append(row)
-        b_ub.append(float(-min_nodes))
-
-        for edge_index, edge in enumerate(edges):
-            source = edge.get("source")
-            target = edge.get("target")
-            if source not in node_index or target not in node_index:
-                continue
-            r_index = n + edge_index
-            source_index = node_index[source]
-            target_index = node_index[target]
-            row = [0.0] * variable_count
-            row[source_index] = 1.0
-            row[r_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
-            row = [0.0] * variable_count
-            row[target_index] = 1.0
-            row[r_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
-            row = [0.0] * variable_count
-            row[r_index] = 1.0
-            row[source_index] = -1.0
-            row[target_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
+        a_ub, b_ub = _removal_lp_constraints(node_index, edges, max_nodes, min_nodes)
 
         def solve(c: list[float]):
             return linprog(c, A_ub=a_ub, b_ub=b_ub, bounds=bounds, method="highs")
@@ -2003,42 +1989,7 @@ def relaxed_lp_seed_solutions(problem: dict, max_nodes: int) -> dict:
         edge_weights = [edge_weight(edge) for edge in edges]
         variable_count = n + m
         bounds = [(0.0, 1.0)] * variable_count
-        a_ub = []
-        b_ub = []
-        row = [0.0] * variable_count
-        for index in range(n):
-            row[index] = 1.0
-        a_ub.append(row)
-        b_ub.append(float(max_nodes))
-        row = [0.0] * variable_count
-        for index in range(n):
-            row[index] = -1.0
-        a_ub.append(row)
-        b_ub.append(-1.0)
-        for edge_index, edge in enumerate(edges):
-            source = edge.get("source")
-            target = edge.get("target")
-            if source not in node_index or target not in node_index:
-                continue
-            r_index = n + edge_index
-            source_index = node_index[source]
-            target_index = node_index[target]
-            row = [0.0] * variable_count
-            row[source_index] = 1.0
-            row[r_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
-            row = [0.0] * variable_count
-            row[target_index] = 1.0
-            row[r_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
-            row = [0.0] * variable_count
-            row[r_index] = 1.0
-            row[source_index] = -1.0
-            row[target_index] = -1.0
-            a_ub.append(row)
-            b_ub.append(0.0)
+        a_ub, b_ub = _removal_lp_constraints(node_index, edges, max_nodes, 1)
 
         objectives = {
             "lp_u1_compact": [1.0] * n + [0.0] * m,
