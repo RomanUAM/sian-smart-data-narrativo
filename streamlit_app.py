@@ -25,7 +25,7 @@ import html as html_lib
 import streamlit as st
 import streamlit.components.v1 as components
 
-from evidence_model import (normalize_record, coverage_report, descriptive_models, metadata_audit_rows,
+from evidence_model import (normalize_record, coverage_report, descriptive_models, metadata_audit_rows, date_precision,
                             apply_reviews, ANALYSIS_LABELS)
 
 from narrative_analysis import (
@@ -1312,6 +1312,7 @@ def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
             st.write(ANALYSIS_LABELS[key])
             st.dataframe([{"tipo": t, **v} for t, v in report["analyses"][key]["by_source_type"].items()], use_container_width=True)
         models = descriptive_models(rows, precision)
+        st.caption("Las tablas siguientes cuentan afirmaciones revisadas con citas textuales. Para calcular coincidencias en todo el corpus, selecciona Conceptos detectados.")
         for key, label in [("document_concept_matrix", "Conceptos revisados por documento"),
                            ("actor_concept_stance", "Posiciones de actores revisadas"),
                            ("source_concept_summary", "Presencia de conceptos por fuente y denominador revisado"),
@@ -1321,7 +1322,7 @@ def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
             if models[key]:
                 st.dataframe(models[key], use_container_width=True)
             else:
-                st.info("No hay evidencia revisada suficiente para este resultado.")
+                st.info("El corpus carece de afirmaciones revisadas que cumplan los requisitos de esta tabla.")
         st.download_button("Descargar cobertura JSON", json.dumps(report, ensure_ascii=False, indent=2),
                            "information_coverage.json", "application/json")
         st.download_button("Descargar modelos descriptivos JSON", json.dumps(models, ensure_ascii=False, indent=2),
@@ -1483,7 +1484,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
-    analysis_view = st.radio("Módulo de análisis", ["Frecuencias léxicas", "Análisis narrativo avanzado"], horizontal=True)
+    analysis_view = st.radio("Módulo de análisis", ["Frecuencias léxicas", "Conceptos detectados", "Análisis narrativo avanzado"], horizontal=True)
     if analysis_view == "Análisis narrativo avanzado":
         rows = render_evidence_dashboard(rows)
     raw_rows = rows
@@ -1713,6 +1714,46 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             )
             st.dataframe(trigrams, use_container_width=True)
 
+        return
+
+    if analysis_view == "Conceptos detectados":
+        from collections import Counter
+        groups = idea_groups_for_records(selected_records)
+        documents = idea_group_document_matrix(selected_records, groups)
+        source_totals, period_totals = Counter(), Counter()
+        source_hits, period_hits = Counter(), Counter()
+        for record, document in zip(selected_records, documents):
+            document["document_id"] = record.get("document_id")
+            document["url"] = record.get("url")
+            info = record["record_information"]
+            source_info = info["publication_source"]
+            source = source_info.get("value") if source_info["state"] == "explicit" else None
+            date_info = info["publication_date"]
+            date = date_info.get("value") if date_info["state"] == "explicit" else None
+            year = date[:4] if date and date_precision(date) else None
+            for bucket, totals, hits in (
+                (source, source_totals, source_hits), (year, period_totals, period_hits),
+            ):
+                if bucket:
+                    totals[bucket] += 1
+                    for concept in groups:
+                        hits[bucket, concept] += int(document[concept] > 0)
+
+        st.caption("Coincidencias léxicas en los documentos filtrados. Cada celda cuenta coincidencias con los términos del concepto. Un cero indica que esos términos no aparecieron.")
+        st.markdown("Conceptos detectados por documento")
+        st.dataframe(documents, use_container_width=True)
+        for label, dimension, totals, hits in (
+            ("Conceptos detectados por fuente explícita", "fuente", source_totals, source_hits),
+            ("Conceptos detectados por año explícito", "año", period_totals, period_hits),
+        ):
+            st.markdown(label)
+            st.caption(f"Documentos con este metadato: {sum(totals.values())} de {len(documents)}.")
+            st.dataframe([
+                {dimension: bucket, "concepto": concept, "documentos_con_coincidencia": hits[bucket, concept],
+                 "documentos_analizados": total, "proporción": hits[bucket, concept] / total}
+                for bucket, total in sorted(totals.items()) for concept in groups
+            ], use_container_width=True)
+        st.info("Las posiciones de actores y las relaciones afirmadas requieren citas atribuidas y revisión. Se consultan en el análisis narrativo avanzado.")
         return
 
     with st.expander("Auditoría del corpus: por qué el número puede bajar tanto", expanded=True):
