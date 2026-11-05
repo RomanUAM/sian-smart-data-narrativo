@@ -193,7 +193,13 @@ def drain_queue() -> None:
         st.session_state.spider_running=job.active()
         st.session_state.spider_config=job.get('config')
         st.session_state.spider_logs=job.logs()
-        st.session_state.spider_rows=job.rows()
+        reuse_import = (
+            job.get('status') == 'imported'
+            and st.session_state.get('loaded_path') == str(job.root)
+            and st.session_state.spider_rows
+        )
+        if not reuse_import:
+            st.session_state.spider_rows = job.rows()
         st.session_state.web_output_dir=str(job.root)
         st.session_state.loaded_path=str(job.root)
         st.session_state.spider_error=''
@@ -1902,27 +1908,28 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             st.error(
                 f"Este corpus sólo llega hasta {max(year_options)}. Para analizar hasta 2026 debes correr una nueva recolección con año final 2026."
             )
-        with st.expander("Fuentes exactas usadas en el análisis: tipo, motor, URL y texto limpio"):
-            st.dataframe(
-                [
-                    {
-                        "year": row.get("year"),
-                        "source_type": row_source_type(row),
-                        "source_api": row.get("source_api"),
-                        "medium": row.get("medium"),
-                        "title": row.get("title"),
-                        "url": row.get("url"),
-                        "status": row.get("status"),
-                        "text_length": row.get("text_length"),
-                        "word_count": row.get("word_count"),
-                        "cleaning_notes": ", ".join(row.get("cleaning_notes") or []),
-                        "analysis_text_preview": (row.get("text_normalized") or row.get("text_clean") or "")[:500],
-                        "tokens_after_stopwords": " ".join(tokenize(row.get("text_normalized") or row.get("text_clean") or "", extra_stopwords)[:80]),
-                    }
-                    for row in selected_records
-                ],
-                use_container_width=True,
-            )
+        with st.expander("Fuentes exactas usadas en el análisis: tipo, motor, URL y texto limpio", on_change="rerun") as source_audit:
+            if source_audit.open:
+                st.dataframe(
+                    [
+                        {
+                            "year": row.get("year"),
+                            "source_type": row_source_type(row),
+                            "source_api": row.get("source_api"),
+                            "medium": row.get("medium"),
+                            "title": row.get("title"),
+                            "url": row.get("url"),
+                            "status": row.get("status"),
+                            "text_length": row.get("text_length"),
+                            "word_count": row.get("word_count"),
+                            "cleaning_notes": ", ".join(row.get("cleaning_notes") or []),
+                            "analysis_text_preview": (row.get("text_normalized") or row.get("text_clean") or "")[:500],
+                            "tokens_after_stopwords": " ".join(tokenize(row.get("text_normalized") or row.get("text_clean") or "", extra_stopwords)[:80]),
+                        }
+                        for row in selected_records
+                    ],
+                    use_container_width=True,
+                )
 
     if manually_removed_records:
         with st.expander(f"Documentos excluidos manualmente del análisis ({len(manually_removed_records)})"):
