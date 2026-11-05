@@ -2328,62 +2328,9 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 help="En genético es número de generaciones aproximado; en recocido son iteraciones/10 visuales.",
             )
             edge_cost_weight = s3.slider("Penalización peso de aristas", 0.1, 5.0, 1.0, step=0.1)
-            if cover_method.startswith("Algoritmo genético"):
-                cover = genetic_weighted_node_cover(
-                    narrative_graph,
-                    max_nodes=cover_max_nodes,
-                    allowed_node_types=allowed_cover_types,
-                    edge_types=edge_cover_types,
-                    generations=int(population_or_iterations),
-                    seed=int(solver_seed),
-                    edge_cost_weight=float(edge_cost_weight),
-                    coverage_mode=coverage_mode,
-                )
-            elif cover_method.startswith("Método de composición musical"):
-                cover = musical_composition_weighted_node_cover(
-                    narrative_graph,
-                    max_nodes=cover_max_nodes,
-                    allowed_node_types=allowed_cover_types,
-                    edge_types=edge_cover_types,
-                    composers=12,
-                    max_arrangements=int(population_or_iterations),
-                    seed=int(solver_seed),
-                    edge_cost_weight=float(edge_cost_weight),
-                    coverage_mode=coverage_mode,
-                )
-            elif cover_method.startswith("Recocido"):
-                cover = annealing_weighted_node_cover(
-                    narrative_graph,
-                    max_nodes=cover_max_nodes,
-                    allowed_node_types=allowed_cover_types,
-                    edge_types=edge_cover_types,
-                    iterations=int(population_or_iterations) * 10,
-                    seed=int(solver_seed),
-                    edge_cost_weight=float(edge_cost_weight),
-                    coverage_mode=coverage_mode,
-                )
-            else:
-                cover = greedy_weighted_node_cover(
-                    narrative_graph,
-                    max_nodes=cover_max_nodes,
-                    allowed_node_types=allowed_cover_types,
-                    edge_types=edge_cover_types,
-                    objective=cover_objective,
-                    coverage_mode=coverage_mode,
-                    edge_cost_weight=float(edge_cost_weight),
-                )
-            if st.button("Comparar todos los métodos con estos parámetros"):
-                comparison_covers = [
-                    greedy_weighted_node_cover(
-                        narrative_graph,
-                        max_nodes=cover_max_nodes,
-                        allowed_node_types=allowed_cover_types,
-                        edge_types=edge_cover_types,
-                        objective=cover_objective,
-                        coverage_mode=coverage_mode,
-                        edge_cost_weight=float(edge_cost_weight),
-                    ),
-                    genetic_weighted_node_cover(
+            if st.checkbox("Calcular cubridor exploratorio de la red narrativa", key="run_legacy_narrative_cover"):
+                if cover_method.startswith("Algoritmo genético"):
+                    cover = genetic_weighted_node_cover(
                         narrative_graph,
                         max_nodes=cover_max_nodes,
                         allowed_node_types=allowed_cover_types,
@@ -2392,18 +2339,9 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                         seed=int(solver_seed),
                         edge_cost_weight=float(edge_cost_weight),
                         coverage_mode=coverage_mode,
-                    ),
-                    annealing_weighted_node_cover(
-                        narrative_graph,
-                        max_nodes=cover_max_nodes,
-                        allowed_node_types=allowed_cover_types,
-                        edge_types=edge_cover_types,
-                        iterations=int(population_or_iterations) * 10,
-                        seed=int(solver_seed),
-                        edge_cost_weight=float(edge_cost_weight),
-                        coverage_mode=coverage_mode,
-                    ),
-                    musical_composition_weighted_node_cover(
+                    )
+                elif cover_method.startswith("Método de composición musical"):
+                    cover = musical_composition_weighted_node_cover(
                         narrative_graph,
                         max_nodes=cover_max_nodes,
                         allowed_node_types=allowed_cover_types,
@@ -2413,38 +2351,101 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                         seed=int(solver_seed),
                         edge_cost_weight=float(edge_cost_weight),
                         coverage_mode=coverage_mode,
-                    ),
-                ]
-                st.markdown("Comparación de métodos")
-                st.dataframe(
-                    [
-                        {
-                            "method": item["stats"].get("method"),
-                            "coverage_mode": item["stats"].get("coverage_mode"),
-                            "selected_nodes": item["stats"].get("selected_nodes"),
-                            "nodes_ratio": item["stats"].get("nodes_ratio"),
-                            "node_weight_ratio": item["stats"].get("node_weight_ratio"),
-                            "removed_edge_weight_ratio": item["stats"].get("removed_edge_weight_ratio"),
-                            "preserved_weight_share": item["stats"].get("preserved_weight_share"),
-                            "hypervolume": item["stats"].get("hypervolume"),
-                            "objective_value": item["stats"].get("objective_value"),
-                        }
-                        for item in comparison_covers
-                    ],
-                    use_container_width=True,
-                )
-            c1, c2, c3, c4, c5, c6 = st.columns(6)
-            c1.metric("Método", cover["stats"].get("method", "greedy"))
-            c2.metric("Nodos/total", cover["stats"].get("nodes_ratio", "—"))
-            c3.metric("Peso nodal/total", cover["stats"].get("node_weight_ratio", "—"))
-            c4.metric("Aristas retiradas/total", cover["stats"].get("removed_edge_weight_ratio", "—"))
-            c5.metric("Hipervolumen", cover["stats"].get("hypervolume", "—"))
-            c6.metric("Pareto", cover["stats"].get("pareto_solutions", "—"))
-            st.dataframe(cover["selected_nodes"], use_container_width=True)
-            if cover.get("pareto_front"):
-                st.markdown("Frente Pareto multiobjetivo")
-                st.caption("Selector nodal inspirado en SCP: minimizar nodos/total, maximizar peso nodal/total y minimizar peso de aristas retiradas/total.")
-                st.dataframe(cover["pareto_front"], use_container_width=True)
+                    )
+                elif cover_method.startswith("Recocido"):
+                    cover = annealing_weighted_node_cover(
+                        narrative_graph,
+                        max_nodes=cover_max_nodes,
+                        allowed_node_types=allowed_cover_types,
+                        edge_types=edge_cover_types,
+                        iterations=int(population_or_iterations) * 10,
+                        seed=int(solver_seed),
+                        edge_cost_weight=float(edge_cost_weight),
+                        coverage_mode=coverage_mode,
+                    )
+                else:
+                    cover = greedy_weighted_node_cover(
+                        narrative_graph,
+                        max_nodes=cover_max_nodes,
+                        allowed_node_types=allowed_cover_types,
+                        edge_types=edge_cover_types,
+                        objective=cover_objective,
+                        coverage_mode=coverage_mode,
+                        edge_cost_weight=float(edge_cost_weight),
+                    )
+                if st.button("Comparar todos los métodos con estos parámetros"):
+                    comparison_covers = [
+                        greedy_weighted_node_cover(
+                            narrative_graph,
+                            max_nodes=cover_max_nodes,
+                            allowed_node_types=allowed_cover_types,
+                            edge_types=edge_cover_types,
+                            objective=cover_objective,
+                            coverage_mode=coverage_mode,
+                            edge_cost_weight=float(edge_cost_weight),
+                        ),
+                        genetic_weighted_node_cover(
+                            narrative_graph,
+                            max_nodes=cover_max_nodes,
+                            allowed_node_types=allowed_cover_types,
+                            edge_types=edge_cover_types,
+                            generations=int(population_or_iterations),
+                            seed=int(solver_seed),
+                            edge_cost_weight=float(edge_cost_weight),
+                            coverage_mode=coverage_mode,
+                        ),
+                        annealing_weighted_node_cover(
+                            narrative_graph,
+                            max_nodes=cover_max_nodes,
+                            allowed_node_types=allowed_cover_types,
+                            edge_types=edge_cover_types,
+                            iterations=int(population_or_iterations) * 10,
+                            seed=int(solver_seed),
+                            edge_cost_weight=float(edge_cost_weight),
+                            coverage_mode=coverage_mode,
+                        ),
+                        musical_composition_weighted_node_cover(
+                            narrative_graph,
+                            max_nodes=cover_max_nodes,
+                            allowed_node_types=allowed_cover_types,
+                            edge_types=edge_cover_types,
+                            composers=12,
+                            max_arrangements=int(population_or_iterations),
+                            seed=int(solver_seed),
+                            edge_cost_weight=float(edge_cost_weight),
+                            coverage_mode=coverage_mode,
+                        ),
+                    ]
+                    st.markdown("Comparación de métodos")
+                    st.dataframe(
+                        [
+                            {
+                                "method": item["stats"].get("method"),
+                                "coverage_mode": item["stats"].get("coverage_mode"),
+                                "selected_nodes": item["stats"].get("selected_nodes"),
+                                "nodes_ratio": item["stats"].get("nodes_ratio"),
+                                "node_weight_ratio": item["stats"].get("node_weight_ratio"),
+                                "removed_edge_weight_ratio": item["stats"].get("removed_edge_weight_ratio"),
+                                "preserved_weight_share": item["stats"].get("preserved_weight_share"),
+                                "hypervolume": item["stats"].get("hypervolume"),
+                                "objective_value": item["stats"].get("objective_value"),
+                            }
+                            for item in comparison_covers
+                        ],
+                        use_container_width=True,
+                    )
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
+                c1.metric("Método", cover["stats"].get("method", "greedy"))
+                c2.metric("Nodos/total", cover["stats"].get("nodes_ratio", "—"))
+                c3.metric("Peso nodal/total", cover["stats"].get("node_weight_ratio", "—"))
+                c4.metric("Aristas retiradas/total", cover["stats"].get("removed_edge_weight_ratio", "—"))
+                c5.metric("Hipervolumen", cover["stats"].get("hypervolume", "—"))
+                c6.metric("Pareto", cover["stats"].get("pareto_solutions", "—"))
+                st.dataframe(cover["selected_nodes"], use_container_width=True)
+                if cover.get("pareto_front"):
+                    st.markdown("Frente Pareto multiobjetivo")
+                    st.caption("Selector nodal inspirado en SCP: minimizar nodos/total, maximizar peso nodal/total y minimizar peso de aristas retiradas/total.")
+                    st.dataframe(cover["pareto_front"], use_container_width=True)
 
             with st.expander("Nodos, aristas y comunidades de la red narrativa"):
                 st.markdown("Nodos centrales")
