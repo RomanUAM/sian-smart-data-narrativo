@@ -1327,8 +1327,9 @@ def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
                            "information_coverage.json", "application/json")
         st.download_button("Descargar modelos descriptivos JSON", json.dumps(models, ensure_ascii=False, indent=2),
                            "descriptive_models.json", "application/json")
-        st.download_button("Descargar corpus con evidencia y revisiones", json.dumps(rows, ensure_ascii=False, indent=2),
-                           "news_records_reviewed.json", "application/json")
+        if st.button("Preparar descarga del corpus con evidencia y revisiones"):
+            st.download_button("Descargar corpus con evidencia y revisiones", json.dumps(rows, ensure_ascii=False, indent=2),
+                               "news_records_reviewed.json", "application/json")
         template = [{"document_id": r["document_id"], "version_id": r["version_id"], "claims": [], "reviewed_concepts": []} for r in rows]
         st.download_button("Descargar plantilla de selección", json.dumps([{ "document_id": r["document_id"], "version_id": r["version_id"], "state": "pending", "reason": "", "evidence": "", "reviewer": "", "reviewed_at": None} for r in rows], ensure_ascii=False, indent=2), "selection_review_template.json", "application/json")
         st.download_button("Descargar plantilla de revisión", json.dumps(template, ensure_ascii=False, indent=2),
@@ -1484,7 +1485,16 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
-    analysis_view = st.radio("Módulo de análisis", ["Frecuencias léxicas", "Conceptos detectados", "Análisis narrativo avanzado"], horizontal=True)
+    analysis_view = st.radio(
+        "Módulo de análisis",
+        ["Frecuencias léxicas", "Conceptos detectados", "Análisis narrativo avanzado"],
+        horizontal=True,
+    )
+    st.caption(
+        "Frecuencias léxicas: monogramas, bigramas y trigramas. "
+        "Análisis narrativo avanzado: red de conocimiento, red de actores, "
+        "eventos y momentos narrativos, red semántica, sentimiento y métodos de cobertura."
+    )
     if analysis_view == "Análisis narrativo avanzado":
         rows = render_evidence_dashboard(rows)
     raw_rows = rows
