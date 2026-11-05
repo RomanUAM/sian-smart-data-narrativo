@@ -1483,7 +1483,9 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         )
         return
 
-    rows = render_evidence_dashboard(rows)
+    analysis_view = st.radio("Módulo de análisis", ["Frecuencias léxicas", "Análisis narrativo avanzado"], horizontal=True)
+    if analysis_view == "Análisis narrativo avanzado":
+        rows = render_evidence_dashboard(rows)
     raw_rows = rows
     rows, duplicate_rows = deduplicate_rows_for_analysis(raw_rows)
     if duplicate_rows:
@@ -1601,6 +1603,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         media=selected_media,
         languages=selected_languages,
         localizations=selected_localizations,
+        already_enriched=True,
     )
     selected_records, manually_removed_records = exclude_records_for_analysis(
         selected_records,
@@ -1621,6 +1624,96 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
     m3.metric("Años comprobables", len({row.get("year") for row in selected_records if row.get("year")}))
     m4.metric("Medios", len({row.get("medium") for row in selected_records}))
     m5.metric("México foco/mención", sum(1 for row in selected_records if row.get("localization") in {"Mexico-focused", "Mexico-mentioned"}))
+
+    if not selected_records:
+        st.warning("Los filtros dejaron el corpus vacío.")
+        return
+
+    if analysis_view == "Frecuencias léxicas":
+        lexical_view = st.radio("Tipo de frecuencia", ["Monogramas", "Bigramas", "Trigramas"], horizontal=True)
+        if lexical_view == "Monogramas":
+            top_n = st.slider("Número de monogramas", 10, 100, 30, step=5)
+            terms = pareto_terms(top_terms(selected_records, top_n=top_n, extra_stopwords=extra_stopwords))
+            left, right = st.columns(2)
+            with left:
+                st.markdown("Monogramas / unigramas más frecuentes")
+                st.vega_lite_chart(
+                    terms,
+                    {
+                        "mark": {"type": "bar", "tooltip": True},
+                        "encoding": {
+                            "y": {"field": "term", "type": "nominal", "sort": "-x", "title": "Término"},
+                            "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
+                        },
+                    },
+                    use_container_width=True,
+                )
+                st.dataframe(terms, use_container_width=True)
+            with right:
+                st.markdown("Pareto acumulado de monogramas")
+                st.vega_lite_chart(
+                    terms,
+                    {
+                        "layer": [
+                            {
+                                "mark": {"type": "bar", "tooltip": True},
+                                "encoding": {
+                                    "x": {"field": "term", "type": "nominal", "sort": "-y", "title": "Término"},
+                                    "y": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
+                                },
+                            },
+                            {
+                                "mark": {"type": "line", "point": True, "tooltip": True, "color": "firebrick"},
+                                "encoding": {
+                                    "x": {"field": "term", "type": "nominal", "sort": "-y"},
+                                    "y": {"field": "cumulative_share", "type": "quantitative", "title": "Proporción acumulada"},
+                                },
+                            },
+                        ],
+                        "resolve": {"scale": {"y": "independent"}},
+                    },
+                    use_container_width=True,
+                )
+            st.markdown("Candidatas a palabras vacías del corpus")
+            st.caption("Si una palabra aparece demasiado y no aporta significado narrativo, cópiala a Stopwords extra y vuelve a correr el análisis.")
+            if st.checkbox("Mostrar candidatas a palabras vacías"):
+                st.dataframe(stopword_candidates(selected_records, top_n=50), use_container_width=True)
+
+        if lexical_view == "Bigramas":
+            top_n_bigrams = st.slider("Número de bigramas", 10, 100, 30, step=5)
+            bigrams = top_ngrams(selected_records, n=2, top_n=top_n_bigrams, extra_stopwords=extra_stopwords)
+            st.markdown("Bigramas más frecuentes")
+            st.vega_lite_chart(
+                bigrams,
+                {
+                    "mark": {"type": "bar", "tooltip": True},
+                    "encoding": {
+                        "y": {"field": "ngram", "type": "nominal", "sort": "-x", "title": "Bigrama"},
+                        "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
+                    },
+                },
+                use_container_width=True,
+            )
+            st.dataframe(bigrams, use_container_width=True)
+
+        if lexical_view == "Trigramas":
+            top_n_trigrams = st.slider("Número de trigramas", 10, 100, 30, step=5)
+            trigrams = top_ngrams(selected_records, n=3, top_n=top_n_trigrams, extra_stopwords=extra_stopwords)
+            st.markdown("Trigramas más frecuentes")
+            st.vega_lite_chart(
+                trigrams,
+                {
+                    "mark": {"type": "bar", "tooltip": True},
+                    "encoding": {
+                        "y": {"field": "ngram", "type": "nominal", "sort": "-x", "title": "Trigrama"},
+                        "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
+                    },
+                },
+                use_container_width=True,
+            )
+            st.dataframe(trigrams, use_container_width=True)
+
+        return
 
     with st.expander("Auditoría del corpus: por qué el número puede bajar tanto", expanded=True):
         st.warning(
@@ -1677,10 +1770,6 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 use_container_width=True,
             )
 
-    if not selected_records:
-        st.warning("Los filtros dejaron el corpus vacío.")
-        return
-
     core_event_rows = apply_actor_validations(
         extract_narrative_events(selected_records, extra_stopwords=extra_stopwords),
         load_actor_validations(actor_validation_path(analysis_path)),
@@ -1697,9 +1786,6 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
         "Geolocalización",
         "Eventos narrativos",
         "Cubridor y métodos",
-        "Monogramas",
-        "Bigramas",
-        "Trigramas",
         "Grupos de ideas",
         "Grafo de conocimiento",
         "Marcos narrativos",
@@ -2663,87 +2749,6 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             st.download_button("Descargar nodos seleccionados CSV", rows_to_csv(selected_cover["selected_nodes"]), "selected_cover_nodes.csv", "text/csv")
 
     with analysis_tabs[3]:
-        top_n = st.slider("Número de monogramas", 10, 100, 30, step=5)
-        terms = pareto_terms(top_terms(selected_records, top_n=top_n, extra_stopwords=extra_stopwords))
-        left, right = st.columns(2)
-        with left:
-            st.markdown("Monogramas / unigramas más frecuentes")
-            st.vega_lite_chart(
-                terms,
-                {
-                    "mark": {"type": "bar", "tooltip": True},
-                    "encoding": {
-                        "y": {"field": "term", "type": "nominal", "sort": "-x", "title": "Término"},
-                        "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
-                    },
-                },
-                use_container_width=True,
-            )
-            st.dataframe(terms, use_container_width=True)
-        with right:
-            st.markdown("Pareto acumulado de monogramas")
-            st.vega_lite_chart(
-                terms,
-                {
-                    "layer": [
-                        {
-                            "mark": {"type": "bar", "tooltip": True},
-                            "encoding": {
-                                "x": {"field": "term", "type": "nominal", "sort": "-y", "title": "Término"},
-                                "y": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
-                            },
-                        },
-                        {
-                            "mark": {"type": "line", "point": True, "tooltip": True, "color": "firebrick"},
-                            "encoding": {
-                                "x": {"field": "term", "type": "nominal", "sort": "-y"},
-                                "y": {"field": "cumulative_share", "type": "quantitative", "title": "Proporción acumulada"},
-                            },
-                        },
-                    ],
-                    "resolve": {"scale": {"y": "independent"}},
-                },
-                use_container_width=True,
-            )
-        st.markdown("Candidatas a palabras vacías del corpus")
-        st.caption("Si una palabra aparece demasiado y no aporta significado narrativo, cópiala a Stopwords extra y vuelve a correr el análisis.")
-        st.dataframe(stopword_candidates(selected_records, top_n=50), use_container_width=True)
-
-    with analysis_tabs[4]:
-        top_n_bigrams = st.slider("Número de bigramas", 10, 100, 30, step=5)
-        bigrams = top_ngrams(selected_records, n=2, top_n=top_n_bigrams, extra_stopwords=extra_stopwords)
-        st.markdown("Bigramas más frecuentes")
-        st.vega_lite_chart(
-            bigrams,
-            {
-                "mark": {"type": "bar", "tooltip": True},
-                "encoding": {
-                    "y": {"field": "ngram", "type": "nominal", "sort": "-x", "title": "Bigrama"},
-                    "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
-                },
-            },
-            use_container_width=True,
-        )
-        st.dataframe(bigrams, use_container_width=True)
-
-    with analysis_tabs[5]:
-        top_n_trigrams = st.slider("Número de trigramas", 10, 100, 30, step=5)
-        trigrams = top_ngrams(selected_records, n=3, top_n=top_n_trigrams, extra_stopwords=extra_stopwords)
-        st.markdown("Trigramas más frecuentes")
-        st.vega_lite_chart(
-            trigrams,
-            {
-                "mark": {"type": "bar", "tooltip": True},
-                "encoding": {
-                    "y": {"field": "ngram", "type": "nominal", "sort": "-x", "title": "Trigrama"},
-                    "x": {"field": "count", "type": "quantitative", "title": "Frecuencia"},
-                },
-            },
-            use_container_width=True,
-        )
-        st.dataframe(trigrams, use_container_width=True)
-
-    with analysis_tabs[6]:
         st.markdown("Grupos de ideas / tópicos locales")
         st.caption("Los grupos se calculan por diccionarios editables, pero pueden inicializarse desde comunidades y nodos centrales del grafo de conocimiento.")
         suggested_group_graph = build_knowledge_graph(
@@ -2815,7 +2820,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.markdown("Matriz documento × grupo de ideas")
         st.dataframe(matrix_rows, use_container_width=True)
 
-    with analysis_tabs[7]:
+    with analysis_tabs[4]:
         st.markdown("Grafo de conocimiento local")
         st.caption("Incluye monogramas, bigramas, trigramas, fuentes, años, idioma y localización. Los grupos adaptativos salen de comunidades del grafo.")
         c1, c2, c3 = st.columns(3)
@@ -2975,7 +2980,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.dataframe(knowledge_graph["communities"], use_container_width=True)
         st.caption("Estos grupos cambian con el tópico, filtros, stopwords y umbrales. Úsalos como propuesta inicial y luego edita el diccionario en 'Grupos de ideas'.")
 
-    with analysis_tabs[8]:
+    with analysis_tabs[5]:
         frames = frame_counts(selected_records)
         frames_year = frame_counts_by_year(selected_records)
         st.markdown("Marcos narrativos detectados por diccionario local")
@@ -3014,7 +3019,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         )
         st.dataframe(frames_year, use_container_width=True)
 
-    with analysis_tabs[9]:
+    with analysis_tabs[6]:
         st.markdown("Red semántica local con comunidades y cubridor")
         st.caption(
             "Construye una red de coocurrencia limpia, detecta comunidades con Louvain/modularidad y aplica el mismo modelo de cubridor multiobjetivo."
@@ -3194,7 +3199,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             st.download_button("Descargar comparación cubridor semántico CSV", rows_to_csv(semantic_comparison_rows), "semantic_cover_methods.csv", "text/csv")
             st.download_button("Descargar Pareto semántico CSV", rows_to_csv(semantic_pareto_rows), "semantic_cover_pareto.csv", "text/csv")
 
-    with analysis_tabs[10]:
+    with analysis_tabs[7]:
         st.markdown("Disección estructural de narrativas")
         st.caption(
             "Esta capa no afirma verdad judicial ni psicológica. Produce indicadores locales: "
@@ -3337,7 +3342,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
             "application/json",
         )
 
-    with analysis_tabs[11]:
+    with analysis_tabs[8]:
         st.markdown("Sentimiento local por fuente y año")
         st.caption(
             "Análisis léxico local bilingüe. Es exploratorio y auditable: no usa LLM ni servicios externos. "
@@ -3410,7 +3415,7 @@ Por eso el frente es tridimensional. Una gráfica 2D sólo es una proyección; n
         st.download_button("Descargar sentimiento por documento CSV", rows_to_csv(sentiment_rows), "sentiment_documents.csv", "text/csv")
         st.download_button("Descargar sentimiento por año/fuente CSV", rows_to_csv(sentiment_summary), "sentiment_by_year_source.csv", "text/csv")
 
-    with analysis_tabs[12]:
+    with analysis_tabs[9]:
         terms = pareto_terms(top_terms(selected_records, top_n=100, extra_stopwords=extra_stopwords))
         bigrams = top_ngrams(selected_records, n=2, top_n=100, extra_stopwords=extra_stopwords)
         trigrams = top_ngrams(selected_records, n=3, top_n=100, extra_stopwords=extra_stopwords)
@@ -6023,7 +6028,7 @@ if large_corpus:
     st.success(f"Corpus disponible: {len(st.session_state.spider_rows)} registros.")
     run_analysis = st.checkbox("Calcular análisis del corpus", key="run_large_corpus_analysis")
 
-if st.session_state.spider_rows and run_analysis:
+if st.session_state.spider_rows and (not large_corpus or st.checkbox("Mostrar resumen de recolección")):
     render_results(st.session_state.spider_rows)
 
 if st.session_state.spider_running:

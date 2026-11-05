@@ -768,8 +768,10 @@ def filter_records(
     media: list[str] | None = None,
     languages: list[str] | None = None,
     localizations: list[str] | None = None,
+    *,
+    already_enriched: bool = False,
 ) -> list[dict]:
-    rows = enrich_records_for_analysis(usable_records(records))
+    rows = records if already_enriched else enrich_records_for_analysis(usable_records(records))
     if source_types:
         rows = [row for row in rows if (row.get("source_type") or "other") in source_types]
     if years:
@@ -833,7 +835,9 @@ def corpus_tokens(records: list[dict], extra_stopwords: Iterable[str] | None = N
 
 
 def top_terms(records: list[dict], top_n: int = 30, extra_stopwords: Iterable[str] | None = None) -> list[dict]:
-    counts = Counter(corpus_tokens(records, extra_stopwords))
+    counts: Counter[str] = Counter()
+    for record in records:
+        counts.update(tokenize(record_text(record), extra_stopwords))
     return [{"term": term, "count": count} for term, count in counts.most_common(top_n)]
 
 
