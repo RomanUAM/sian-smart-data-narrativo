@@ -1266,11 +1266,16 @@ def render_results(rows: list[dict]) -> None:
         use_container_width=True,
     )
 
-    json_bytes = json.dumps(rows, ensure_ascii=False, indent=2).encode("utf-8")
-    jsonl_bytes = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows).encode("utf-8")
-
-    st.download_button("Descargar JSON", data=json_bytes, file_name="news_records.json", mime="application/json")
-    st.download_button("Descargar JSONL", data=jsonl_bytes, file_name="news_records.jsonl", mime="application/x-ndjson")
+    if st.button("Preparar descarga de la base JSON"):
+        st.download_button(
+            "Descargar JSON", json.dumps(rows, ensure_ascii=False).encode("utf-8"),
+            "news_records.json", "application/json", on_click="ignore",
+        )
+    if st.button("Preparar descarga de la base JSONL"):
+        st.download_button(
+            "Descargar JSONL", "\n".join(json.dumps(row, ensure_ascii=False) for row in rows).encode("utf-8"),
+            "news_records.jsonl", "application/x-ndjson", on_click="ignore",
+        )
 
 
 def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
@@ -1312,7 +1317,8 @@ def render_evidence_dashboard(rows: list[dict]) -> list[dict]:
                        "total": v["total"], "cobertura": v["coverage"],
                        "exclusiones": json.dumps(v["excluded_reasons"], ensure_ascii=False)}
                       for k, v in report["analyses"].items()], use_container_width=True)
-        st.dataframe([{k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v) if v is not None else None) for k, v in item.items()} for item in metadata_audit_rows(rows)], use_container_width=True)
+        if st.checkbox("Mostrar auditoría detallada de metadatos"):
+            st.dataframe([{k: (json.dumps(v, ensure_ascii=False) if isinstance(v, (dict, list)) else str(v) if v is not None else None) for k, v in item.items()} for item in metadata_audit_rows(rows)], use_container_width=True)
         st.caption("La cobertura indica disponibilidad de evidencia; no representatividad ni suficiencia estadística. El dominio de una URL no identifica por sí solo al autor o editor.")
         for key in ("temporal", "actor_stance"):
             st.write(ANALYSIS_LABELS[key])
@@ -3509,6 +3515,9 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
 
     if analysis_tabs[12].open:
         with analysis_tabs[12]:
+            if not st.checkbox("Calcular la exportación completa"):
+                st.info("La exportación completa recalcula las redes y puede tardar con corpus grandes.")
+                return
             terms = pareto_terms(top_terms(selected_records, top_n=100, extra_stopwords=extra_stopwords))
             bigrams = top_ngrams(selected_records, n=2, top_n=100, extra_stopwords=extra_stopwords)
             trigrams = top_ngrams(selected_records, n=3, top_n=100, extra_stopwords=extra_stopwords)
@@ -3615,24 +3624,23 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             ]
             for label, filename, content in csv_exports:
                 st.download_button(label, content, filename, "text/csv")
-            if st.button("Preparar ZIP de análisis con figuras PDF"):
-                from lexical_figures import analysis_zip, lexical_figure_files, network_figure_files
+            from lexical_figures import analysis_zip, lexical_figure_files, network_figure_files
 
-                files = lexical_figure_files(terms, bigrams, trigrams, len(selected_records))
-                files.update(network_figure_files([
-                    ("red_narrativa", "Red narrativa", narrative_graph),
-                    ("grafo_conocimiento", "Grafo de conocimiento", knowledge_graph),
-                    ("red_semantica", "Red semántica", network),
-                    ("red_estructural", "Red estructural", structural_graph),
-                ]))
-                figures_only = {name: content for name, content in files.items()
-                                if name.startswith("figuras/")}
-                st.download_button("Descargar solo figuras PDF y PNG", analysis_zip(figures_only),
-                                   "SIAN_figuras.zip", "application/zip")
-                files["narrative_analysis_unified.json"] = json_bytes
-                files.update({f"datos/{filename}": content for _, filename, content in csv_exports})
-                st.download_button("Descargar ZIP de análisis con figuras PDF", analysis_zip(files),
-                                   "SIAN_analisis_con_figuras.zip", "application/zip")
+            files = lexical_figure_files(terms, bigrams, trigrams, len(selected_records))
+            files.update(network_figure_files([
+                ("red_narrativa", "Red narrativa", narrative_graph),
+                ("grafo_conocimiento", "Grafo de conocimiento", knowledge_graph),
+                ("red_semantica", "Red semántica", network),
+                ("red_estructural", "Red estructural", structural_graph),
+            ]))
+            figures_only = {name: content for name, content in files.items()
+                            if name.startswith("figuras/")}
+            st.download_button("Descargar solo figuras PDF y PNG", analysis_zip(figures_only),
+                               "SIAN_figuras.zip", "application/zip", on_click="ignore")
+            files["narrative_analysis_unified.json"] = json_bytes
+            files.update({f"datos/{filename}": content for _, filename, content in csv_exports})
+            st.download_button("Descargar ZIP de análisis con figuras PDF", analysis_zip(files),
+                               "SIAN_analisis_con_figuras.zip", "application/zip", on_click="ignore")
 
 
 
