@@ -435,11 +435,14 @@ def normalize_token_text(text: str) -> str:
     return (text or "").lower().translate(str.maketrans("áéíóúüñ", "aeiouun"))
 
 
+INSTITUTIONAL_BOILERPLATE = re.compile(
+    r"\b(?:universidad|unveridad)[\W_]+nacional[\W_]+autonoma[\W_]+(?:de[\W_]+)?mexico\b"
+)
 TOKEN_ALIASES = {"tatuajes": "tatuaje"}
 
 
 def tokenize(text: str, extra_stopwords: Iterable[str] | None = None) -> list[str]:
-    text = normalize_token_text(text)
+    text = INSTITUTIONAL_BOILERPLATE.sub(" ", normalize_token_text(text))
     tokens = re.findall(r"\b[a-z][a-z0-9_-]{2,}\b", text)
     stops = {normalize_token_text(stop).strip() for stop in STOPWORDS}
     stops.update(normalize_token_text(s).strip() for s in (extra_stopwords or []) if s.strip())
