@@ -27,6 +27,8 @@ STOPWORDS = {
     "según", "ser", "si", "sí", "sin", "sobre", "son", "su", "sus", "tambien",
     "también", "tan", "tanto", "te", "tiene", "tienen", "todo", "todos", "tras", "tu",
     "un", "una", "unas", "uno", "unos", "y", "ya",
+    "puede", "pueden", "podria", "podrian", "mismo", "misma", "mismos", "mismas",
+    "sino", "manera", "vez", "veces", "estas", "esas", "sea", "sean", "hacia", "traves",
     # English
     "about", "above", "after", "again", "against", "all", "am", "an", "and", "any",
     "are", "as", "at", "be", "because", "been", "before", "being", "below", "between",
