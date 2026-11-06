@@ -1,4 +1,5 @@
-"""PDF and PNG figures for the lexical analysis."""
+"""PDF and PNG figures for SIAN analysis exports."""
+from collections import Counter
 from io import BytesIO
 import csv
 import io
@@ -138,6 +139,42 @@ def network_figure_files(networks):
             ax.text(.5, .5, "Sin aristas en el análisis seleccionado", ha="center", va="center")
         for extension in ("pdf", "png"):
             files[f"figuras/redes/{name}.{extension}"] = _render(figure, extension)
+    return files
+
+
+def narrative_figure_files(narrative_graph, timeline, event_summary):
+    actors = {
+        "nodes": [node for node in narrative_graph["nodes"] if node["node_type"] == "actor"],
+        "edges": [edge for edge in narrative_graph["edges"] if edge["edge_type"] == "actor_co_document"],
+    }
+    files = network_figure_files([
+        ("actores", "Entidades extraídas que aparecen en el mismo documento", actors),
+    ])
+
+    stages = Figure(figsize=(9, 4.5), layout="constrained")
+    ax = stages.subplots()
+    ax.barh([row["narrative_stage"] for row in event_summary],
+            [row["documents_with_stage"] for row in event_summary], color="#237c79")
+    ax.invert_yaxis()
+    ax.set(title="SIAN · Etapas narrativas detectadas", xlabel="Documentos con la etapa")
+    if not event_summary:
+        ax.text(.5, .5, "Sin etapas detectadas", ha="center", transform=ax.transAxes)
+
+    documents_by_year = Counter()
+    for row in timeline:
+        documents_by_year[int(row["year"])] += row["documents"]
+    years = sorted(documents_by_year)
+    chronology = Figure(figsize=(10, 4.5), layout="constrained")
+    ax = chronology.subplots()
+    ax.bar(years, [documents_by_year[year] for year in years], color="#237c79")
+    ax.set(title=f"SIAN · Cronología de registros fechados ({sum(documents_by_year.values()):,})",
+           xlabel="Año", ylabel="Documentos")
+    if not years:
+        ax.text(.5, .5, "Sin fechas disponibles", ha="center", transform=ax.transAxes)
+
+    for name, figure in (("etapas_narrativas", stages), ("cronologia", chronology)):
+        for extension in ("pdf", "png"):
+            files[f"figuras/{name}.{extension}"] = _render(figure, extension)
     return files
 
 

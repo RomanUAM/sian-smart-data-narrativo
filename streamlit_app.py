@@ -3405,6 +3405,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             structural_graph = build_structural_influence_graph(structural_rows)
             custody_rows = technical_traceability_rows(selected_records)
             sdn = smart_data_nucleus(selected_records)
+            timeline = narrative_timeline_rows(selected_records, event_rows, extra_stopwords)
             sentiment_by_url = {row.get("url"): row for row in sentiment_rows}
             enriched_records = []
             for row in selected_records:
@@ -3434,6 +3435,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 "technical_traceability": custody_rows,
                 "narrative_events": event_rows,
                 "narrative_event_summary": event_summary,
+                "narrative_timeline": timeline,
                 "actors": actors,
                 "idea_groups": group_rows,
                 "idea_group_document_matrix": group_matrix,
@@ -3468,6 +3470,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 ('Descargar sentimiento año-fuente CSV', 'sentiment_by_year_source.csv', rows_to_csv(sentiment_summary)),
                 ('Descargar eventos narrativos CSV', 'narrative_events.csv', rows_to_csv(event_rows)),
                 ('Descargar resumen eventos CSV', 'narrative_event_summary.csv', rows_to_csv(event_summary)),
+                ('Descargar cronología CSV', 'narrative_timeline.csv', rows_to_csv(timeline)),
                 ('Descargar actores CSV', 'narrative_actors.csv', rows_to_csv(actors)),
                 ('Descargar nodos red narrativa CSV', 'narrative_graph_nodes.csv', rows_to_csv(narrative_graph['nodes'])),
                 ('Descargar aristas red narrativa CSV', 'narrative_graph_edges.csv', rows_to_csv(narrative_graph['edges'])),
@@ -3484,7 +3487,7 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
             ]
             for label, filename, content in csv_exports:
                 st.download_button(label, content, filename, "text/csv")
-            from lexical_figures import analysis_zip, lexical_figure_files, network_figure_files
+            from lexical_figures import analysis_zip, lexical_figure_files, narrative_figure_files, network_figure_files
 
             files = lexical_figure_files(terms, bigrams, trigrams, len(selected_records))
             files.update(network_figure_files([
@@ -3493,8 +3496,21 @@ identidad, riesgo sanitario, estigma laboral o regulación pública. Por eso el 
                 ("red_semantica", "Red semántica", network),
                 ("red_estructural", "Red estructural", structural_graph),
             ]))
+            files.update(narrative_figure_files(narrative_graph, timeline, event_summary))
             figures_only = {name: content for name, content in files.items()
                             if name.startswith("figuras/")}
+
+            @st.fragment
+            def preview_figures():
+                with st.expander("Vista previa de las figuras", expanded=True):
+                    previews = {name: data for name, data in figures_only.items() if name.endswith(".png")}
+                    selected_figure = st.selectbox(
+                        "Figura", sorted(previews),
+                        format_func=lambda name: Path(name).stem.replace("_", " ").capitalize(),
+                    )
+                    st.image(previews[selected_figure])
+
+            preview_figures()
             st.download_button("Descargar solo figuras PDF y PNG", analysis_zip(figures_only),
                                "SIAN_figuras.zip", "application/zip", on_click="ignore")
             files["narrative_analysis_unified.json"] = json_bytes

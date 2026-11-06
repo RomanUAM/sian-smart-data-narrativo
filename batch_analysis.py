@@ -13,7 +13,7 @@ import zipfile
 from corpus_contract import merge_rows
 from descriptive_analysis import narrative_timeline_rows, sentiment_document_rows, sentiment_by_year_source
 from evidence_model import descriptive_models
-from lexical_figures import lexical_figure_files, network_figure_files
+from lexical_figures import lexical_figure_files, narrative_figure_files, network_figure_files
 import narrative_analysis as na
 from structural_narrative import (
     extract_structural_propositions, build_structural_influence_graph, structural_summary,
@@ -122,6 +122,7 @@ def run(corpus, output, budget, seed):
                 archive.writestr(f"datos/{name}_{kind}.csv", csv_bytes(graph[kind]))
         figures = lexical_figure_files(terms, bigrams, trigrams, len(records))
         figures.update(network_figure_files(networks))
+        figures.update(narrative_figure_files(narrative, tables["cronologia"], tables["eventos_resumen"]))
         for name, contents in figures.items():
             archive.writestr(name, contents)
 
